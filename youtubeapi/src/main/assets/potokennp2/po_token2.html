@@ -9,52 +9,84 @@ if (typeof Promise === "undefined") {
     function Promise(fn) {
       var state = "pending",
         value,
-        deferred = [];
+        handlers = [];
+
+      function settle(newState, newValue) {
+        if (state !== "pending")
+          return;
+
+        state = newState;
+        value = newValue;
+        setTimeout(function () {
+          while (handlers.length)
+            handle(handlers.shift());
+        }, 0);
+      }
 
       function resolve(newValue) {
         try {
-          if (
-            newValue &&
-            typeof newValue.then === "function"
-          ) {
+          if (newValue && typeof newValue.then === "function") {
             newValue.then(resolve, reject);
             return;
           }
-          state = "resolved";
-          value = newValue;
-          setTimeout(function () {
-            deferred.forEach(function (handler) {
-              handler(value);
-            });
-          }, 0);
+          settle("resolved", newValue);
         } catch (e) {
           reject(e);
         }
       }
 
       function reject(reason) {
-        state = "rejected";
-        value = reason;
-        setTimeout(function () {
-          deferred.forEach(function (handler) {
-            handler(value);
-          });
-        }, 0);
+        settle("rejected", reason);
       }
 
-      this.then = function (onResolved) {
-        return new Promise(function (resolve) {
-          deferred.push(function () {
-            resolve(onResolved(value));
+      function handle(handler) {
+        if (state === "pending") {
+          handlers.push(handler);
+          return;
+        }
+
+        var callback = state === "resolved" ? handler.onResolved : handler.onRejected;
+        if (typeof callback !== "function") {
+          (state === "resolved" ? handler.resolve : handler.reject)(value);
+          return;
+        }
+
+        try {
+          handler.resolve(callback(value));
+        } catch (error) {
+          handler.reject(error);
+        }
+      }
+
+      this.then = function (onResolved, onRejected) {
+        return new Promise(function (resolveNext, rejectNext) {
+          handle({
+            onResolved: onResolved,
+            onRejected: onRejected,
+            resolve: resolveNext,
+            reject: rejectNext
           });
-          if (state === "resolved") {
-            resolve(value);
-          }
         });
       };
 
-      fn(resolve, reject);
+      try {
+        fn(resolve, reject);
+      } catch (error) {
+        reject(error);
+      }
     }
+
+    Promise.resolve = function (value) {
+      return new Promise(function (resolve) {
+        resolve(value);
+      });
+    };
+
+    Promise.reject = function (reason) {
+      return new Promise(function (resolve, reject) {
+        reject(reason);
+      });
+    };
 
     window.Promise = Promise;
   })();
@@ -104,15 +136,16 @@ if (typeof window.Symbol !== "function") {
  * @returns A promise that resolves to a loaded BotGuardClient instance.
  */
 function loadBotGuard(challengeData) {
-  this.vm = this[challengeData.globalName];
-  this.program = challengeData.program;
-  this.vmFunctions = {};
-  this.syncSnapshotFunction = null;
+  var botguard = this;
+  botguard.vm = botguard[challengeData.globalName];
+  botguard.program = challengeData.program;
+  botguard.vmFunctions = {};
+  botguard.syncSnapshotFunction = null;
 
-  if (!this.vm)
+  if (!botguard.vm)
     throw new Error('[BotGuardClient]: VM not found in the global object');
 
-  if (!this.vm.a)
+  if (!botguard.vm.a)
     throw new Error('[BotGuardClient]: Could not load program');
 
   const vmFunctionsCallback = function (
@@ -121,7 +154,7 @@ function loadBotGuard(challengeData) {
     passEventFunction,
     checkCameraFunction
   ) {
-    this.vmFunctions = {
+    botguard.vmFunctions = {
       asyncSnapshotFunction: asyncSnapshotFunction,
       shutdownFunction: shutdownFunction,
       passEventFunction: passEventFunction,
@@ -129,27 +162,38 @@ function loadBotGuard(challengeData) {
     };
   };
 
-  this.syncSnapshotFunction = this.vm.a(this.program, vmFunctionsCallback, true, this.userInteractionElement, function () {/** no-op */ }, [ [], [] ])[0]
+  var noop = function () {};
+  var loggerFunctions = [noop, noop, noop, noop, noop];
+  var vmTelemetryCallback = function () {};
 
-  // an asynchronous function runs in the background and it will eventually call
-  // `vmFunctionsCallback`, however we need to manually tell JavaScript to pass
-  // control to the things running in the background by interrupting this async
-  // function in any way, e.g. with a delay of 1ms. The loop is most probably not
-  // needed but is there just because.
-  return new Promise(function (resolve, reject) {
-    i = 0
-    refreshIntervalId = setInterval(function () {
-      if (!!this.vmFunctions.asyncSnapshotFunction) {
-        resolve(this)
-        clearInterval(refreshIntervalId);
-      }
-      if (i >= 10000) {
-        reject("asyncSnapshotFunction is null even after 10 seconds")
-        clearInterval(refreshIntervalId);
-      }
-      i += 1;
-    }, 1);
-  })
+  return Promise.resolve(botguard.vm.a(
+    botguard.program,
+    vmFunctionsCallback,
+    true,
+    botguard.userInteractionElement,
+    vmTelemetryCallback,
+    [[], []],
+    undefined,
+    false,
+    loggerFunctions
+  )).then(function (vmLoadResult) {
+    botguard.syncSnapshotFunction = vmLoadResult && vmLoadResult[0];
+
+    // The VM installs asyncSnapshotFunction asynchronously after setup completes.
+    return new Promise(function (resolve, reject) {
+      var attempts = 0;
+      var refreshIntervalId = setInterval(function () {
+        if (botguard.vmFunctions.asyncSnapshotFunction) {
+          clearInterval(refreshIntervalId);
+          resolve(botguard);
+        } else if (attempts >= 10000) {
+          clearInterval(refreshIntervalId);
+          reject(new Error("asyncSnapshotFunction is null even after 10 seconds"));
+        }
+        attempts += 1;
+      }, 1);
+    });
+  });
 }
 
 /**
@@ -169,11 +213,12 @@ function loadBotGuard(challengeData) {
  * ```
  */
 function snapshot(args) {
+  var botguard = this;
   return new Promise(function (resolve, reject) {
-    if (!this.vmFunctions.asyncSnapshotFunction)
+    if (!botguard.vmFunctions.asyncSnapshotFunction)
       return reject(new Error('[BotGuardClient]: Async snapshot function not found'));
 
-    this.vmFunctions.asyncSnapshotFunction(function (response) { resolve(response) }, [
+    botguard.vmFunctions.asyncSnapshotFunction(function (response) { resolve(response) }, [
       args.contentBinding,
       args.signedTimestamp,
       args.webPoSignalOutput,
@@ -205,14 +250,14 @@ function obtainPoToken(identifier) {
   if (!(mintCallback instanceof Function))
     throw new Error('APF:Failed');
 
-  const result = mintCallback(identifier);
+  return Promise.resolve(mintCallback(identifier)).then(function (result) {
+    if (!result)
+      throw new Error('YNJ:Undefined');
 
-  if (!result)
-    throw new Error('YNJ:Undefined');
+    if (!(result instanceof Uint8Array))
+      throw new Error('ODM:Invalid');
 
-  if (!(result instanceof Uint8Array))
-    throw new Error('ODM:Invalid');
-
-  return result;
+    return result;
+  });
 }
 </script></head><body></body></html>

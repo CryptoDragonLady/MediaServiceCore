@@ -8,4 +8,8 @@ internal object VisitorApiHelper {
         return QueryBuilder(AppClient.WEB)
             .build()
     }
+
+    fun getUserAgent() = AppClient.WEB.userAgent
+    fun getClientName() = AppClient.WEB.innerTubeName
+    fun getClientVersion() = AppClient.WEB.clientVersion
 }
