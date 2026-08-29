@@ -203,16 +203,20 @@ public class VideoInfoService extends VideoInfoServiceBase {
 
     private VideoInfo getVideoInfo(AppClient client, String videoId, String clickTrackingParams) {
         VideoInfo result;
+        String clientPlaybackNonce = null;
 
         if (client == AppClient.INITIAL) {
             result = InitialResponseService.getVideoInfo(videoId, mAuthBlock);
         } else {
+            mAppService.resetClientPlaybackNonce(); // unique value per client player request
+            clientPlaybackNonce = mAppService.getClientPlaybackNonce();
             PoTokenResult poTokens = PoTokenGate.getTokenResult(client, videoId);
             String videoInfoQuery = VideoInfoApiHelper.getVideoInfoQuery(
                     client,
                     videoId,
                     clickTrackingParams,
-                    poTokens
+                    poTokens,
+                    clientPlaybackNonce
             );
             String visitorData = VideoInfoApiHelper.resolveVisitorData(poTokens, mAppService.getVisitorData());
             result = executeVideoInfoRequest(client, videoInfoQuery, visitorData);
@@ -220,6 +224,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
 
         if (result != null) {
             result.setClient(client);
+            result.setClientPlaybackNonce(clientPlaybackNonce);
         }
 
         return result;
@@ -239,11 +244,12 @@ public class VideoInfoService extends VideoInfoServiceBase {
         VideoInfo result = getVideoInfo(wrapper, auth);
 
         if (result != null) {
-            Log.d(TAG, "Player response: client=%s, unplayable=%s, reason=%s, adaptive=%s, regular=%s, sabr=%s",
+            Log.d(TAG, "Player response: client=%s, unplayable=%s, reason=%s, adaptive=%s, regular=%s, sabr=%s, cpn=%s",
                     client.name(), result.isUnplayable(), result.getPlayabilityStatus(),
                     result.getAdaptiveFormats() != null ? result.getAdaptiveFormats().size() : 0,
                     result.getRegularFormats() != null ? result.getRegularFormats().size() : 0,
-                    result.getServerAbrStreamingUrl() != null);
+                    result.getServerAbrStreamingUrl() != null,
+                    result.getClientPlaybackNonce() != null);
         }
 
         return result;

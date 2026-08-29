@@ -4,6 +4,7 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
+import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.prefs.GlobalPreferences;
 import com.liskovsoft.youtubeapi.auth.V1.AuthApi;
@@ -128,13 +129,14 @@ public class AppService {
             return mClientPlaybackNonce;
         }
 
-        if (mAppServiceInt.getPlayerDataExtractor() == null) {
-            return null;
-        }
-
-        mClientPlaybackNonce = mAppServiceInt.getPlayerDataExtractor().createClientPlaybackNonce();
+        mClientPlaybackNonce = createClientPlaybackNonce(mAppServiceInt.getPlayerDataExtractor());
 
         return mClientPlaybackNonce;
+    }
+
+    static String createClientPlaybackNonce(PlayerDataExtractor extractor) {
+        String nonce = extractor != null ? extractor.createClientPlaybackNonce() : null;
+        return nonce != null ? nonce : YouTubeHelper.generateCPNParameter2();
     }
 
     /**

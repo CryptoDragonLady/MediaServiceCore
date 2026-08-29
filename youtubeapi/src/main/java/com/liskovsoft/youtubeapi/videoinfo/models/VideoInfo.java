@@ -109,6 +109,7 @@ public class VideoInfo {
     private boolean mIsAuth;
     private String mPoToken;
     private String mPlayerRequestPoToken;
+    private String mClientPlaybackNonce;
     private String mVisitorCookie;
     private AppClient mClient;
     private VideoUrlHolder mUrlHolder;
@@ -460,6 +461,14 @@ public class VideoInfo {
 
     public void setPlayerRequestPoToken(String poToken) {
         mPlayerRequestPoToken = poToken;
+    }
+
+    public String getClientPlaybackNonce() {
+        return mClientPlaybackNonce;
+    }
+
+    public void setClientPlaybackNonce(String clientPlaybackNonce) {
+        mClientPlaybackNonce = clientPlaybackNonce;
     }
 
     public String getVisitorCookie() {
