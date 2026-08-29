@@ -7,14 +7,21 @@ import com.liskovsoft.youtubeapi.app.models.ClientData;
 import com.liskovsoft.youtubeapi.app.models.cached.AppInfoCached;
 import com.liskovsoft.youtubeapi.app.models.cached.ClientDataCached;
 import com.liskovsoft.youtubeapi.app.playerdata.PlayerDataExtractor;
+import com.liskovsoft.youtubeapi.app.playerdata.PlayerUrlCache;
 import com.liskovsoft.youtubeapi.common.helpers.AppConstants;
+
+import java.util.Arrays;
+import java.util.List;
 
 public class AppServiceIntCached extends AppServiceInt {
     private static final String TAG = AppServiceIntCached.class.getSimpleName();
     private static final long CACHE_REFRESH_PERIOD_MS = 10 * 60 * 60 * 1_000; // check updated core files every 10 hours
+    private static final int PLAYER_EXTRACTOR_CACHE_SIZE = 4;
     private AppInfoCached mAppInfo;
     private ClientDataCached mClientData;
     private PlayerDataExtractor mPlayerDataExtractor;
+    private final PlayerUrlCache<PlayerDataExtractor> mPlayerDataExtractors =
+            new PlayerUrlCache<>(PLAYER_EXTRACTOR_CACHE_SIZE);
     private long mAppInfoUpdateTimeMs;
     private final Object mAppInfoSync = new Object();
     private final Object mPlayerSync = new Object();
@@ -49,18 +56,47 @@ public class AppServiceIntCached extends AppServiceInt {
         }
     }
 
+    @Override
+    public PlayerDataExtractor getPlayerDataExtractor() {
+        synchronized (mPlayerSync) {
+            return getPlayerDataExtractorSync(null);
+        }
+    }
+
     private PlayerDataExtractor getPlayerDataExtractorSync(String playerUrl) {
-        if (mPlayerDataExtractor != null && Helpers.equalsAny(playerUrl, mPlayerDataExtractor.getPlayerUrl(), getFailedPlayerUrl())) {
+        String appPlayerUrl = check(mAppInfo) ? mAppInfo.getPlayerUrl() : null;
+        String savedPlayerUrl = check(getData().getAppInfo()) ? getData().getAppInfo().getPlayerUrl() : null;
+        List<String> candidates = PlayerScriptCandidates.resolve(
+                playerUrl,
+                Arrays.asList(appPlayerUrl, savedPlayerUrl, AppConstants.playerUrls.get(0))
+        );
+
+        if (playerUrl != null) {
+            return candidates.isEmpty() ? null : getExactPlayerDataExtractor(candidates.get(0));
+        }
+
+        if (mPlayerDataExtractor != null) {
             return mPlayerDataExtractor;
         }
 
-        firstValidExtractor(
-                playerUrl,
-                check(getData().getAppInfo()) ? getData().getAppInfo().getPlayerUrl() : null,
-                AppConstants.playerUrls.get(0)
-        );
+        firstValidExtractor(appPlayerUrl, candidates);
 
         return mPlayerDataExtractor;
+    }
+
+    private PlayerDataExtractor getExactPlayerDataExtractor(String playerUrl) {
+        PlayerDataExtractor cachedExtractor = mPlayerDataExtractors.get(playerUrl);
+        if (cachedExtractor != null) {
+            return cachedExtractor;
+        }
+
+        PlayerDataExtractor extractor = super.getPlayerDataExtractor(playerUrl);
+        if (!extractor.validate()) {
+            return null;
+        }
+
+        mPlayerDataExtractors.put(playerUrl, extractor);
+        return extractor;
     }
 
     @Override
@@ -105,7 +141,7 @@ public class AppServiceIntCached extends AppServiceInt {
     @Override
     public boolean isPlayerCacheActual() {
         synchronized (mPlayerSync) {
-            return mPlayerDataExtractor != null;
+            return mPlayerDataExtractor != null || !mPlayerDataExtractors.isEmpty();
         }
     }
 
@@ -117,36 +153,24 @@ public class AppServiceIntCached extends AppServiceInt {
         return clientData != null && clientData.validate();
     }
 
-    private String getFailedPlayerUrl() {
-        return getData().getFailedAppInfo() != null ? getData().getFailedAppInfo().getPlayerUrl() : null;
-    }
-
-    private void firstValidExtractor(String... playerUrls) {
-        int idx = -1;
-        final int MAIN = 0;
-        final int DATA = 1;
-        final int APP_CONST = 2;
+    private void firstValidExtractor(String appPlayerUrl, List<String> playerUrls) {
         String actualTimestamp = null;
 
         for (String url : playerUrls) {
-            idx++;
-            if (url == null) {
-                continue;
+            mPlayerDataExtractor = mPlayerDataExtractors.get(url);
+            if (mPlayerDataExtractor == null) {
+                mPlayerDataExtractor = super.getPlayerDataExtractor(url);
             }
 
-            mPlayerDataExtractor = super.getPlayerDataExtractor(url);
-
             if (mPlayerDataExtractor.validate()) {
-                switch (idx) {
-                    case MAIN:
-                        getData().setAppInfo(mAppInfo);
-                        getData().setFailedAppInfo(null);
-                        break;
-                    case DATA:
-                    case APP_CONST:
-                        getData().setFailedAppInfo(mAppInfo);
-                        getData().setAppInfo(null);
-                        break;
+                mPlayerDataExtractors.put(url, mPlayerDataExtractor);
+
+                if (Helpers.equals(url, appPlayerUrl)) {
+                    getData().setAppInfo(mAppInfo);
+                    getData().setFailedAppInfo(null);
+                } else {
+                    getData().setFailedAppInfo(mAppInfo);
+                    getData().setAppInfo(null);
                 }
 
                 if (actualTimestamp != null) {
@@ -158,9 +182,11 @@ public class AppServiceIntCached extends AppServiceInt {
 
             // Try to fetch the actual timestamp for old players. Needed for history (tracking) and possibly more.
             // NOTE: the older player may not work on newer timestamp
-            if (idx == MAIN) {
+            if (Helpers.equals(url, appPlayerUrl)) {
                 actualTimestamp = mPlayerDataExtractor.getSignatureTimestamp();
             }
         }
+
+        mPlayerDataExtractor = null;
     }
 }

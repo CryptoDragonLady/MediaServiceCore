@@ -7,6 +7,7 @@ import androidx.annotation.NonNull;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.prefs.GlobalPreferences;
 import com.liskovsoft.youtubeapi.auth.V1.AuthApi;
+import com.liskovsoft.youtubeapi.app.playerdata.PlayerDataExtractor;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -66,11 +67,25 @@ public class AppService {
      * sParams - signature used in music videos
      */
     public Pair<List<String>, List<String>> bulkSigExtract(List<String> nParams, List<String> sParams) {
-        if (Helpers.allNulls(nParams, sParams) || mAppServiceInt.getPlayerDataExtractor() == null) {
+        if (Helpers.allNulls(nParams, sParams)) {
             return null;
         }
 
-        return mAppServiceInt.getPlayerDataExtractor().bulkSigExtract(nParams, sParams);
+        PlayerDataExtractor extractor = mAppServiceInt.getPlayerDataExtractor();
+        return extractor != null ? extractor.bulkSigExtract(nParams, sParams) : null;
+    }
+
+    /**
+     * Extracts N/SIG challenges using the player JavaScript associated with the response.
+     */
+    public Pair<List<String>, List<String>> bulkSigExtract(String playerUrl, List<String> nParams, List<String> sParams) {
+        if (playerUrl == null || Helpers.allNulls(nParams, sParams)) {
+            return null;
+        }
+
+        PlayerDataExtractor extractor = mAppServiceInt.getPlayerDataExtractor(playerUrl);
+
+        return extractor != null ? extractor.bulkSigExtract(nParams, sParams) : null;
     }
 
     public List<String> extractNSig(List<String> nParams) {
@@ -140,11 +155,22 @@ public class AppService {
      * Used in get_video_info
      */
     public String getSignatureTimestamp() {
-        if (mAppServiceInt.getPlayerDataExtractor() == null) {
+        PlayerDataExtractor extractor = mAppServiceInt.getPlayerDataExtractor();
+        return extractor != null ? extractor.getSignatureTimestamp() : null;
+    }
+
+    public String getSignatureTimestamp(String playerUrl) {
+        if (playerUrl == null) {
             return null;
         }
 
-        return mAppServiceInt.getPlayerDataExtractor().getSignatureTimestamp();
+        PlayerDataExtractor extractor = mAppServiceInt.getPlayerDataExtractor(playerUrl);
+
+        if (extractor == null) {
+            return null;
+        }
+
+        return extractor.getSignatureTimestamp();
     }
 
     /**
