@@ -157,13 +157,14 @@ public class AppServiceIntCached extends AppServiceInt {
         String actualTimestamp = null;
 
         for (String url : playerUrls) {
-            mPlayerDataExtractor = mPlayerDataExtractors.get(url);
-            if (mPlayerDataExtractor == null) {
-                mPlayerDataExtractor = super.getPlayerDataExtractor(url);
+            PlayerDataExtractor extractor = mPlayerDataExtractors.get(url);
+            if (extractor == null) {
+                extractor = super.getPlayerDataExtractor(url);
             }
 
-            if (mPlayerDataExtractor.validate()) {
-                mPlayerDataExtractors.put(url, mPlayerDataExtractor);
+            if (extractor.validate()) {
+                mPlayerDataExtractor = extractor;
+                mPlayerDataExtractors.put(url, extractor);
 
                 if (Helpers.equals(url, appPlayerUrl)) {
                     getData().setAppInfo(mAppInfo);
@@ -174,7 +175,7 @@ public class AppServiceIntCached extends AppServiceInt {
                 }
 
                 if (actualTimestamp != null) {
-                    mPlayerDataExtractor.setSignatureTimestamp(actualTimestamp);
+                    extractor.setSignatureTimestamp(actualTimestamp);
                 }
 
                 break;
@@ -183,10 +184,8 @@ public class AppServiceIntCached extends AppServiceInt {
             // Try to fetch the actual timestamp for old players. Needed for history (tracking) and possibly more.
             // NOTE: the older player may not work on newer timestamp
             if (Helpers.equals(url, appPlayerUrl)) {
-                actualTimestamp = mPlayerDataExtractor.getSignatureTimestamp();
+                actualTimestamp = extractor.getSignatureTimestamp();
             }
         }
-
-        mPlayerDataExtractor = null;
     }
 }

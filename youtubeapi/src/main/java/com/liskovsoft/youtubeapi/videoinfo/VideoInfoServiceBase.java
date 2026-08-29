@@ -85,6 +85,8 @@ public abstract class VideoInfoServiceBase {
             applySignatures(urlHolders, signatures);
         }
 
+        applyPlaybackNonce(urlHolders, resolvePlaybackNonce(videoInfo, mAppService.getClientPlaybackNonce()));
+
         PoTokenResult poTokens = PoTokenGate.getTokenResult(
                 videoInfo.getClient(),
                 videoInfo.getVideoDetails().getVideoId()
@@ -153,6 +155,21 @@ public abstract class VideoInfoServiceBase {
         for (int i = 0; i < urlHolders.size(); i++) {
             urlHolders.get(i).setPoToken(poToken);
         }
+    }
+
+    static void applyPlaybackNonce(List<VideoUrlHolder> urlHolders, String playbackNonce) {
+        if (playbackNonce == null) {
+            return;
+        }
+
+        for (VideoUrlHolder urlHolder : urlHolders) {
+            urlHolder.setCpn(playbackNonce);
+        }
+    }
+
+    static String resolvePlaybackNonce(VideoInfo videoInfo, String fallbackNonce) {
+        String responseNonce = videoInfo != null ? videoInfo.getClientPlaybackNonce() : null;
+        return responseNonce != null ? responseNonce : fallbackNonce;
     }
 
     private static String applyPoToken(String url, String poToken) {

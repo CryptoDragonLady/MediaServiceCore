@@ -1,6 +1,8 @@
 package com.liskovsoft.youtubeapi.videoinfo.V2
 
+import com.google.gson.JsonParser
 import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult
+import com.liskovsoft.youtubeapi.common.helpers.AppClient
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -27,5 +29,28 @@ class VideoInfoApiHelperTest {
             "global-visitor",
             VideoInfoApiHelper.resolveVisitorData(null, "global-visitor")
         )
+    }
+
+    @Test
+    fun playerQueryUsesExactProvidedPlaybackNonce() {
+        val tokens = PoTokenResult(
+            "video-id",
+            "visitor-data",
+            "player-token",
+            "streaming-token",
+            "visitor-data"
+        )
+
+        val query = VideoInfoApiHelper.getVideoInfoQuery(
+            AppClient.VISIONOS,
+            "video-id",
+            null,
+            tokens,
+            "request-nonce-01",
+            12345
+        )
+        val json = JsonParser().parse(query).asJsonObject
+
+        assertEquals("request-nonce-01", json.get("cpn").asString)
     }
 }
