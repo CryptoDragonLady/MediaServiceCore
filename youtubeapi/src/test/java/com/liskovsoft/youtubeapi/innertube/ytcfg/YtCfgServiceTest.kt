@@ -43,4 +43,16 @@ class YtCfgServiceTest {
         assertEquals(true, YtCfgService.extractGvsPoTokenBinding(ytCfg, AppClient.WEB))
         assertEquals(false, YtCfgService.extractGvsPoTokenBinding(ytCfg, AppClient.WEB_EMBED))
     }
+
+    @Test
+    fun clientsWithoutAPlayerPageUseWebWatchContextForChallenges() {
+        assertEquals(AppClient.WEB, YtCfgService.selectPlayerConfigClient(AppClient.VISIONOS, "video-id"))
+        assertEquals(AppClient.WEB, YtCfgService.selectPlayerConfigClient(AppClient.IOS, "video-id"))
+    }
+
+    @Test
+    fun clientsWithAPlayerPageKeepTheirOwnContext() {
+        assertEquals(AppClient.WEB_EMBED, YtCfgService.selectPlayerConfigClient(AppClient.WEB_EMBED, "video-id"))
+        assertEquals(AppClient.WEB, YtCfgService.selectPlayerConfigClient(AppClient.WEB, "video-id"))
+    }
 }

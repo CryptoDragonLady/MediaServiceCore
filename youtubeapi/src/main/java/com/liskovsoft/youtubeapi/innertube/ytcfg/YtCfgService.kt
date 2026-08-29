@@ -35,8 +35,16 @@ internal object YtCfgService {
 
     @Synchronized
     fun getPlayerUrl(client: AppClient, videoId: String?): String? {
-        return getPlayerConfig(client, videoId)?.playerUrl
+        return getPlayerConfig(selectPlayerConfigClient(client, videoId), videoId)?.playerUrl
     }
+
+    /**
+     * Native clients do not expose a page from which their player script can be discovered.
+     * Their direct media URLs still carry web-player N/SIG challenges, so use the current watch
+     * player in the same way browser extractors keep one active player URL for the final solve.
+     */
+    internal fun selectPlayerConfigClient(client: AppClient, videoId: String?): AppClient =
+        if (client.getRefererUrl(videoId) != null) client else AppClient.WEB
 
     @Synchronized
     fun isGvsPoTokenContentBound(client: AppClient, videoId: String?): Boolean {
