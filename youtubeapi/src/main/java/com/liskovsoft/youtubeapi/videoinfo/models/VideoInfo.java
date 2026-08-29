@@ -108,6 +108,7 @@ public class VideoInfo {
     private List<CaptionTrack> mMergedCaptionTracks;
     private boolean mIsAuth;
     private String mPoToken;
+    private String mPlayerRequestPoToken;
     private String mVisitorCookie;
     private AppClient mClient;
     private VideoUrlHolder mUrlHolder;
@@ -451,6 +452,14 @@ public class VideoInfo {
 
     public void setPoToken(String poToken) {
         mPoToken = poToken;
+    }
+
+    public String getPlayerRequestPoToken() {
+        return mPlayerRequestPoToken;
+    }
+
+    public void setPlayerRequestPoToken(String poToken) {
+        mPlayerRequestPoToken = poToken;
     }
 
     public String getVisitorCookie() {

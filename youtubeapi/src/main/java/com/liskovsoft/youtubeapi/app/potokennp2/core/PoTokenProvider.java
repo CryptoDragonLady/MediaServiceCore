@@ -41,15 +41,16 @@ public interface PoTokenProvider {
      * </p>
      *
      * <p>
-     * Note that YouTube desktop website generates two {@code poToken}s:
-     * - one for the player requests {@code poToken}s, using the videoId as the minter value;
-     * - one for the streaming URLs, using a visitor data for logged-out users as the minter value.
+     * Note that YouTube desktop website generates two {@code poToken}s. Player requests use the
+     * video ID as their binding. Streaming requests normally use visitor data (or a signed-in data
+     * sync ID), but an experiment can switch them to a video-ID binding.
      * </p>
      *
      * @return a {@link PoTokenResult} specific to the WEB InnerTube client
      */
     @Nullable
-    PoTokenResult getWebClientPoToken(String videoId);
+    PoTokenResult getWebClientPoToken(String videoId, String visitorData,
+                                      String streamingDataContentBinding);
 
     /**
      * Get a {@link PoTokenResult} specific to the web embeds, a.k.a. the WEB_EMBEDDED_PLAYER

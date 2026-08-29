@@ -174,7 +174,7 @@ internal class PoTokenWebView2 private constructor(
      */
     @JavascriptInterface
     fun onJsInitializationError(error: String) {
-        Log.e(TAG, error)
+        Log.e(TAG, "PoToken initialization failed")
         onInitializationErrorCloseAndCancel(buildExceptionForJsError(error))
     }
 
@@ -184,14 +184,14 @@ internal class PoTokenWebView2 private constructor(
      */
     @JavascriptInterface
     fun onRunBotguardResult(botguardResponse: String) {
-        Log.d(TAG, "botguardResponse: $botguardResponse")
+        Log.d(TAG, "BotGuard challenge completed")
 
         val responseBody = makeBotguardServiceRequest(
             "$BASE_URL/\$rpc/google.internal.waa.v1.Waa/GenerateIT",
             "[ \"$REQUEST_KEY\", \"$botguardResponse\" ]",
         ) ?: return
 
-        Log.d(TAG, "GenerateIT response: $responseBody")
+        Log.d(TAG, "Integrity token generated")
         val (integrityToken, expirationTimeInSeconds) = parseIntegrityTokenData(responseBody)
 
         // MOD: backport Instant.now().plusSeconds
@@ -224,7 +224,7 @@ internal class PoTokenWebView2 private constructor(
 
     //region Obtaining poTokens
     override fun generatePoToken(identifier: String): String {
-        Log.d(TAG, "generatePoToken() called with identifier $identifier")
+        Log.d(TAG, "Generating poToken")
         val latch = CountDownLatch(1)
         lateinit var pot: String
 
@@ -268,7 +268,7 @@ internal class PoTokenWebView2 private constructor(
     @JavascriptInterface
     fun onObtainPoTokenError(identifier: String, error: String) {
         val msg = "onObtainPoTokenError: identifier=$identifier error=$error"
-        Log.e(TAG, msg)
+        Log.e(TAG, "PoToken generation failed")
         onInitializationErrorCloseAndCancel(buildExceptionForJsError(msg))
     }
 
@@ -278,10 +278,9 @@ internal class PoTokenWebView2 private constructor(
      */
     @JavascriptInterface
     fun onObtainPoTokenResult(identifier: String, poTokenU8: String) {
-        Log.d(TAG, "Generated poToken (before decoding): identifier=$identifier poTokenU8=$poTokenU8")
         val poToken = u8ToBase64(poTokenU8)
 
-        Log.d(TAG, "Generated poToken: identifier=$identifier poToken=$poToken")
+        Log.d(TAG, "Generated poToken")
         popPoTokenEmitter(identifier)?.invoke(poToken)
     }
 

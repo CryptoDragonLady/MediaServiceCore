@@ -276,27 +276,39 @@ internal class RequestInitBody(
     val videoId: String,
     var client: String? = null,
     // other values specific for player....
-    session: Session
+    signatureTimestamp: String?,
+    poToken: String? = null
 ) {
     val contentCheckOk: Boolean = true
     val racyCheckOk: Boolean = true
-    val playbackContext: PlaybackContext = PlaybackContext(session)
+    val playbackContext: PlaybackContext = PlaybackContext(signatureTimestamp)
+    val serviceIntegrityDimensions: ServiceIntegrityDimensions? =
+        poToken?.let { ServiceIntegrityDimensions(it) }
     var context: InnertubeContext? = null
 
-    class PlaybackContext(session: Session) {
+    constructor(
+        videoId: String,
+        client: String? = null,
+        session: Session,
+        poToken: String? = null
+    ) : this(videoId, client, session.player.signatureTimestamp, poToken)
+
+    class PlaybackContext(signatureTimestamp: String?) {
         // MOD: sabr-shaka-example error: this parameter prevented playback from starting
         //val adPlaybackContext: AdPlaybackContext = AdPlaybackContext()
-        val contentPlaybackContext: ContentPlaybackContext = ContentPlaybackContext(session)
+        val contentPlaybackContext: ContentPlaybackContext = ContentPlaybackContext(signatureTimestamp)
 
         //class AdPlaybackContext {
         //    val pyv: Boolean = true
         //}
 
-        class ContentPlaybackContext(session: Session) {
-            val signatureTimestamp: String? = session.player.signatureTimestamp
+        class ContentPlaybackContext(signatureTimestamp: String?) {
+            val signatureTimestamp: String? = signatureTimestamp
         }
     }
 }
+
+internal data class ServiceIntegrityDimensions(val poToken: String)
 
 internal data class JsonPayloadProcessed(
     val newBody: String,

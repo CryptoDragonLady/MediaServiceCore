@@ -37,21 +37,30 @@ public final class PoTokenResult {
     public final String streamingDataPoToken;
 
     /**
+     * The exact value used to mint {@link #streamingDataPoToken}.
+     */
+    @Nonnull
+    public final String streamingDataContentBinding;
+
+    /**
      * Construct a {@link PoTokenResult} instance.
      *
      * @param videoId              see {@link #videoId}
      * @param visitorData          see {@link #visitorData}
      * @param playerRequestPoToken see {@link #playerRequestPoToken}
      * @param streamingDataPoToken see {@link #streamingDataPoToken}
+     * @param streamingDataContentBinding see {@link #streamingDataContentBinding}
      * @throws NullPointerException if a non-null parameter is null
      */
     public PoTokenResult(@Nonnull final String videoId,
                          @Nonnull final String visitorData,
                          @Nonnull final String playerRequestPoToken,
-                         @Nullable final String streamingDataPoToken) {
+                         @Nullable final String streamingDataPoToken,
+                         @Nonnull final String streamingDataContentBinding) {
         this.videoId = Objects.requireNonNull(videoId);
         this.visitorData = Objects.requireNonNull(visitorData);
         this.playerRequestPoToken = Objects.requireNonNull(playerRequestPoToken);
         this.streamingDataPoToken = streamingDataPoToken;
+        this.streamingDataContentBinding = Objects.requireNonNull(streamingDataContentBinding);
     }
 }

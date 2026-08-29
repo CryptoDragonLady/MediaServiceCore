@@ -6,7 +6,6 @@ import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper
 import com.liskovsoft.sharedutils.helpers.Helpers
 import com.liskovsoft.sharedutils.mylogger.Log
 import com.liskovsoft.youtubeapi.app.AppService
-import com.liskovsoft.youtubeapi.app.PoTokenGate
 import com.liskovsoft.youtubeapi.formatbuilders.utils.MediaFormatUtils
 import com.liskovsoft.youtubeapi.innertube.impl.MediaFormatImpl
 import com.liskovsoft.youtubeapi.innertube.impl.MediaItemFormatInfoImpl
@@ -77,9 +76,7 @@ internal class Player private constructor(
 
         applyClientVer(urlHolders)
 
-        val poToken = PoTokenGate.getPoToken(formatInfo.clientInfo, formatInfo.videoId)
-        formatInfo.poToken = poToken
-        applySessionPoToken(urlHolders, poToken)
+        applyStreamingPoToken(urlHolders, formatInfo.poToken)
     }
 
     private fun extractSParams(urlHolders: List<VideoUrlHolder>): List<String?> = urlHolders.map { it.getSParam() }
@@ -133,7 +130,7 @@ internal class Player private constructor(
         }
     }
     
-    private fun applySessionPoToken(urlHolders: List<VideoUrlHolder>, poToken: String?) {
+    private fun applyStreamingPoToken(urlHolders: List<VideoUrlHolder>, poToken: String?) {
         if (poToken == null) {
             return
         }

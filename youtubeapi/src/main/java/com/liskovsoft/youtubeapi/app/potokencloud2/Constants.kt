@@ -1,5 +1,5 @@
 package com.liskovsoft.youtubeapi.app.potokencloud2
 
-internal val PO_TOKEN_CLOUD_BASE_URLS = arrayOf(
-    "http://192.168.31.61:4416", // local testing server
-)
+// Add trusted BgUtils HTTP v1 provider base URLs here when explicitly configured.
+// Do not ship the upstream developer's private-LAN test address as a playback fallback.
+internal val PO_TOKEN_CLOUD_BASE_URLS = emptyArray<String>()
