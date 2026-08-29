@@ -5,6 +5,7 @@ import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.youtubeapi.app.AppService;
 import com.liskovsoft.googlecommon.common.api.FileApi;
 import com.liskovsoft.youtubeapi.app.PoTokenGate;
+import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
 import com.liskovsoft.youtubeapi.formatbuilders.utils.MediaFormatUtils;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
@@ -84,9 +85,16 @@ public abstract class VideoInfoServiceBase {
             applySignatures(urlHolders, signatures);
         }
 
-        String poToken = PoTokenGate.getPoToken(videoInfo.getClient(), videoInfo.getVideoDetails().getVideoId());
-        videoInfo.setPoToken(poToken);
-        applySessionPoToken(urlHolders, poToken);
+        PoTokenResult poTokens = PoTokenGate.getTokenResult(
+                videoInfo.getClient(),
+                videoInfo.getVideoDetails().getVideoId()
+        );
+        String streamingPoToken = poTokens != null ? poTokens.streamingDataPoToken : null;
+        videoInfo.setPoToken(streamingPoToken);
+        videoInfo.setPlayerRequestPoToken(poTokens != null ? poTokens.playerRequestPoToken : null);
+        applyStreamingPoToken(urlHolders, streamingPoToken);
+        videoInfo.setDashManifestUrl(applyPoToken(videoInfo.getDashManifestUrl(), streamingPoToken));
+        videoInfo.setHlsManifestUrl(applyPoToken(videoInfo.getHlsManifestUrl(), streamingPoToken));
     }
 
     private static List<String> extractSParams(List<VideoUrlHolder> urlHolders) {
@@ -137,7 +145,7 @@ public abstract class VideoInfoServiceBase {
         }
     }
 
-    private static void applySessionPoToken(List<VideoUrlHolder> urlHolders, String poToken) {
+    private static void applyStreamingPoToken(List<VideoUrlHolder> urlHolders, String poToken) {
         if (poToken == null) {
             return;
         }
@@ -145,6 +153,16 @@ public abstract class VideoInfoServiceBase {
         for (int i = 0; i < urlHolders.size(); i++) {
             urlHolders.get(i).setPoToken(poToken);
         }
+    }
+
+    private static String applyPoToken(String url, String poToken) {
+        if (url == null || poToken == null) {
+            return url;
+        }
+
+        VideoUrlHolder holder = new VideoUrlHolder(url, null, null);
+        holder.setPoToken(poToken);
+        return holder.getUrl();
     }
 
     private DashInfoUrl getDashInfoUrl(String url) {

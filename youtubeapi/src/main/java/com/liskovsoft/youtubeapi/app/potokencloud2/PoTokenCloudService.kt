@@ -23,16 +23,25 @@ internal object PoTokenCloudService {
         contentPot?.second
     }
 
+    @JvmStatic
+    fun getPoToken(contentBinding: String): String? = runBlocking {
+        getPoTokenResponse(contentBinding)?.poToken
+    }
+
     private suspend fun getPoTokenResponse(identifier: String): PoTokenResponse? {
         var poToken: PoTokenResponse? = null
         val baseUrls = PO_TOKEN_CLOUD_BASE_URLS.toMutableList()
 
         while (baseUrls.isNotEmpty()) {
             val baseUrl = baseUrls[Helpers.getRandomNumber(0, baseUrls.size - 1)]
-            poToken = RetrofitHelper.get(api.getPoToken(baseUrl, identifier))
-            if (poToken?.poToken != null) {
+            poToken = RetrofitHelper.get(
+                api.getPoTokenV1("${baseUrl.trimEnd('/')}/get_pot", PoTokenRequest(identifier))
+            )
+            if (poToken?.poToken != null && poToken.contentBinding == identifier) {
                 break
             }
+
+            poToken = null
 
             baseUrls.remove(baseUrl)
 
@@ -42,5 +51,9 @@ internal object PoTokenCloudService {
         }
 
         return poToken
+    }
+
+    fun resetCache() {
+        contentPot = null
     }
 }

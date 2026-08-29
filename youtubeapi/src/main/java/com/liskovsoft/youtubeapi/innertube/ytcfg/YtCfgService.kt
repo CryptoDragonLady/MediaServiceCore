@@ -13,7 +13,7 @@ internal object YtCfgService {
     private const val WATCH_CONTEXT = "WEB_PLAYER_CONTEXT_CONFIG_ID_KEVLAR_WATCH"
     private val api by lazy { RetrofitHelper.create(YtCfgApi::class.java) }
     private var cachedEncryptedHostFlags: String? = null
-    private val cachedPlayerUrls = mutableMapOf<AppClient, Pair<Long, String>>()
+    private val cachedPlayerConfigs = mutableMapOf<AppClient, CachedPlayerConfig>()
 
     fun getCachedEncryptedHostFlags(videoId: String?): String? {
         return cachedEncryptedHostFlags ?: getEncryptedHostFlags(videoId)?.also { cachedEncryptedHostFlags = it }
@@ -35,14 +35,12 @@ internal object YtCfgService {
 
     @Synchronized
     fun getPlayerUrl(client: AppClient, videoId: String?): String? {
-        val cached = cachedPlayerUrls[client]
-        if (cached != null && System.currentTimeMillis() - cached.first < PLAYER_URL_CACHE_LIFETIME_MS) {
-            return cached.second
-        }
+        return getPlayerConfig(client, videoId)?.playerUrl
+    }
 
-        val playerUrl = extractPlayerUrl(downloadYtCfg(client, videoId), client) ?: return null
-        cachedPlayerUrls[client] = Pair(System.currentTimeMillis(), playerUrl)
-        return playerUrl
+    @Synchronized
+    fun isGvsPoTokenContentBound(client: AppClient, videoId: String?): Boolean {
+        return getPlayerConfig(client, videoId)?.gvsPoTokenContentBound ?: false
     }
 
     internal fun extractPlayerUrl(ytCfg: JsonObject?, client: AppClient): String? {
@@ -63,6 +61,38 @@ internal object YtCfgService {
         }
     }
 
+    internal fun extractGvsPoTokenBinding(ytCfg: JsonObject?, client: AppClient): Boolean {
+        val preferredContext = if (client.isEmbedded) EMBEDDED_CONTEXT else WATCH_CONTEXT
+        val serializedFlags = traverseObj(
+            ytCfg,
+            "WEB_PLAYER_CONTEXT_CONFIGS",
+            preferredContext,
+            "serializedExperimentFlags"
+        )?.asString ?: return false
+
+        return serializedFlags
+            .split('&')
+            .any { it == "html5_generate_content_po_token=true" }
+    }
+
+    private fun getPlayerConfig(client: AppClient, videoId: String?): CachedPlayerConfig? {
+        val cached = cachedPlayerConfigs[client]
+        if (cached != null && System.currentTimeMillis() - cached.timestampMs < PLAYER_URL_CACHE_LIFETIME_MS) {
+            return cached
+        }
+
+        val ytCfg = downloadYtCfg(client, videoId) ?: return null
+        val config = CachedPlayerConfig(
+            timestampMs = System.currentTimeMillis(),
+            playerUrl = extractPlayerUrl(ytCfg, client),
+            gvsPoTokenContentBound = extractGvsPoTokenBinding(ytCfg, client)
+        )
+        if (config.playerUrl != null) {
+            cachedPlayerConfigs[client] = config
+        }
+        return config
+    }
+
     /**
      * https://github.com/yt-dlp/yt-dlp/blob/48a61d0f38b156785d24df628d42892441e008c4/yt_dlp/extractor/youtube/_base.py#L956
      *
@@ -73,7 +103,17 @@ internal object YtCfgService {
         val wrapper = api.getYtCfg(configUrl, client.userAgent)
         val ytCfgStr = RetrofitHelper.get(wrapper)
 
-        val parser = JsonParser()
-        return parser.parse(ytCfgStr?.ytCfg).asJsonObject
+        val config = ytCfgStr?.ytCfg ?: return null
+        return try {
+            JsonParser().parse(config).asJsonObject
+        } catch (_: RuntimeException) {
+            null
+        }
     }
+
+    private data class CachedPlayerConfig(
+        val timestampMs: Long,
+        val playerUrl: String?,
+        val gvsPoTokenContentBound: Boolean
+    )
 }

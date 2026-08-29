@@ -6,9 +6,15 @@ import com.liskovsoft.youtubeapi.innertube.utils.getBaseUrl
 import com.liskovsoft.youtubeapi.innertube.utils.getCodecs
 import com.liskovsoft.youtubeapi.innertube.utils.getMimeType
 import com.liskovsoft.youtubeapi.innertube.utils.getName
+import com.liskovsoft.youtubeapi.videoinfo.models.VideoUrlHolder
 
-internal data class MediaSubtitleImpl(private val captionTrack: CaptionTrack): MediaSubtitle {
-    private val _baseUrl by lazy { captionTrack.getBaseUrl() }
+internal data class MediaSubtitleImpl(
+    private val captionTrack: CaptionTrack,
+    private val poToken: String? = null
+): MediaSubtitle {
+    private val _baseUrl by lazy {
+        VideoUrlHolder(captionTrack.getBaseUrl()).also { it.setPoToken(poToken) }.getUrl()
+    }
     private val _isTranslatable by lazy { captionTrack.isTranslatable ?: false }
     private val _languageCode by lazy { captionTrack.languageCode }
     private val _vssId by lazy { captionTrack.vssId }

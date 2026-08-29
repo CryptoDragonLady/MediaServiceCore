@@ -53,14 +53,19 @@ private const val STATUS_AGE_CHECK_REQUIRED = "AGE_CHECK_REQUIRED"
 private const val STATUS_AGE_VERIFICATION_REQUIRED = "AGE_VERIFICATION_REQUIRED"
 private const val STATUS_CONTENT_CHECK_REQUIRED = "CONTENT_CHECK_REQUIRED"
 
-internal data class MediaItemFormatInfoImpl(private val playerResult: PlayerResult): MediaItemFormatInfo {
+internal data class MediaItemFormatInfoImpl(
+    private val playerResult: PlayerResult,
+    private val requestClient: AppClient = AppClient.WEB,
+    private val playerRequestPoToken: String? = null,
+    private val streamingDataPoToken: String? = null
+): MediaItemFormatInfo {
     private val TAG = MediaItemFormatInfoImpl::class.simpleName
     private val durationPattern1 = Pattern.compile("dur=([^&]*)")
     private val durationPattern2 = Pattern.compile("/dur/([^/]*)")
     val sabrUrlHolder by lazy { VideoUrlHolder(playerResult.getServerAbrStreamingUrl()) }
     private val videoDetails by lazy { playerResult.videoDetails }
     private val _videoPlaybackUstreamerConfig by lazy { playerResult.getVideoPlaybackUstreamerConfig() }
-    private val _clientInfo by lazy { AppClient.WEB } // TODO: replace with innertube client
+    private val _clientInfo by lazy { requestClient }
     private val _adaptiveFormats by lazy {
         playerResult.getAdaptiveFormats()?.map { MediaFormatImpl(it) }
     }
@@ -68,10 +73,10 @@ internal data class MediaItemFormatInfoImpl(private val playerResult: PlayerResu
         playerResult.getLegacyFormats()?.map { MediaFormatImpl(it) }
     }
     private val _subtitles by lazy {
-        playerResult.getMergeCaptionTracks()?.map { MediaSubtitleImpl(it) }
+        playerResult.getMergeCaptionTracks()?.map { MediaSubtitleImpl(it, playerRequestPoToken) }
     }
-    private val _hlsManifestUrl by lazy { playerResult.streamingData?.hlsManifestUrl }
-    private val _dashManifestUrl by lazy { playerResult.streamingData?.dashManifestUrl }
+    private val _hlsManifestUrl by lazy { applyPoToken(playerResult.streamingData?.hlsManifestUrl) }
+    private val _dashManifestUrl by lazy { applyPoToken(playerResult.streamingData?.dashManifestUrl) }
     private val _lengthSeconds by lazy {
         videoDetails?.lengthSeconds ?: extractDurationFromTrack() // try to get duration from video url
     }
@@ -126,7 +131,7 @@ internal data class MediaItemFormatInfoImpl(private val playerResult: PlayerResu
 
     private var _clickTrackingParams: String? = null
 
-    private var _poToken: String? = null
+    private var _poToken: String? = streamingDataPoToken
     private var _visitorCookie: String? = null
 
     init {
@@ -166,7 +171,7 @@ internal data class MediaItemFormatInfoImpl(private val playerResult: PlayerResu
 
     override fun containsMedia() = containsDashUrl() || containsHlsUrl() || containsAdaptiveVideoFormats() || containsUrlFormats()
 
-    override fun containsSabrFormats() = containsAdaptiveVideoFormats()
+    override fun containsSabrFormats() = _videoPlaybackUstreamerConfig != null && containsAdaptiveVideoFormats()
             && (getAdaptiveFormats()?.firstOrNull()?.getFormatType() == MediaFormat.FORMAT_TYPE_SABR || serverAbrStreamingUrl != null)
 
     override fun containsDashFormats() = containsAdaptiveVideoFormats() && getAdaptiveFormats()?.firstOrNull()?.getFormatType() == MediaFormat.FORMAT_TYPE_DASH
@@ -261,6 +266,9 @@ internal data class MediaItemFormatInfoImpl(private val playerResult: PlayerResu
     fun setPoToken(poToken: String?) {
         _poToken = poToken
     }
+
+    private fun applyPoToken(url: String?): String? =
+        VideoUrlHolder(url).also { it.setPoToken(streamingDataPoToken) }.getUrl()
 
     override fun getVisitorCookie() = _visitorCookie
 

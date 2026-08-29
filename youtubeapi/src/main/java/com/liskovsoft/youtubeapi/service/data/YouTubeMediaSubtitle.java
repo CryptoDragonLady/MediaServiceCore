@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.service.data;
 
 import com.liskovsoft.mediaserviceinterfaces.data.MediaSubtitle;
 import com.liskovsoft.youtubeapi.videoinfo.models.CaptionTrack;
+import com.liskovsoft.youtubeapi.videoinfo.models.VideoUrlHolder;
 
 public class YouTubeMediaSubtitle implements MediaSubtitle {
     private String mBaseUrl;
@@ -13,10 +14,12 @@ public class YouTubeMediaSubtitle implements MediaSubtitle {
     private String mMimeType;
     private String mCodecs;
 
-    public static MediaSubtitle from(CaptionTrack track) {
+    public static MediaSubtitle from(CaptionTrack track, String poToken) {
         YouTubeMediaSubtitle subtitle = new YouTubeMediaSubtitle();
 
-        subtitle.mBaseUrl = track.getBaseUrl();
+        VideoUrlHolder baseUrl = new VideoUrlHolder(track.getBaseUrl(), null, null);
+        baseUrl.setPoToken(poToken);
+        subtitle.mBaseUrl = baseUrl.getUrl();
         subtitle.mIsTranslatable = track.isTranslatable();
         subtitle.mLanguageCode = track.getLanguageCode();
         subtitle.mVssId = track.getVssId();

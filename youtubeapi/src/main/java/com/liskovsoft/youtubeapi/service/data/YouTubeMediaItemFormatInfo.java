@@ -148,7 +148,7 @@ public class YouTubeMediaItemFormatInfo implements MediaItemFormatInfo {
             formatInfo.mSubtitles = new ArrayList<>();
 
             for (CaptionTrack track : captionTracks) {
-                formatInfo.mSubtitles.add(YouTubeMediaSubtitle.from(track));
+                formatInfo.mSubtitles.add(YouTubeMediaSubtitle.from(track, videoInfo.getPlayerRequestPoToken()));
             }
         }
 

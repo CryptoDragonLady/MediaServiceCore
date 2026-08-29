@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.liskovsoft.mediaserviceinterfaces.data.MediaFormat
 import com.liskovsoft.sharedutils.TestHelpers
 import com.liskovsoft.youtubeapi.innertube.models.PlayerResult
+import com.liskovsoft.youtubeapi.common.helpers.AppClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -75,6 +76,29 @@ class MediaItemFormatInfoImplTest {
         assertFalse(formatInfo.containsSabrFormats())
         assertTrue(formatInfo.containsDashFormats())
         assertEquals(MediaFormat.FORMAT_TYPE_DASH, formatInfo.getAdaptiveFormats()?.first()?.getFormatType())
+    }
+
+    @Test
+    fun preservesRequestClientAndUsesContextSpecificTokens() {
+        val response = parsePlayerResponse("player/web/2025.11.10_player_regular.json")
+        val withManifests = response.copy(
+            streamingData = response.streamingData?.copy(
+                hlsManifestUrl = "https://example.com/manifest.m3u8?foo=bar",
+                dashManifestUrl = "https://example.com/manifest.mpd?foo=bar"
+            )
+        )
+        val formatInfo = MediaItemFormatInfoImpl(
+            withManifests,
+            AppClient.MWEB,
+            playerRequestPoToken = "player-token",
+            streamingDataPoToken = "streaming-token"
+        )
+
+        assertEquals(AppClient.MWEB, formatInfo.clientInfo)
+        assertEquals("streaming-token", formatInfo.poToken)
+        assertTrue(formatInfo.hlsManifestUrl?.contains("pot=streaming-token") == true)
+        assertTrue(formatInfo.dashManifestUrl?.contains("pot=streaming-token") == true)
+        assertTrue(formatInfo.subtitles?.firstOrNull()?.baseUrl?.contains("pot=player-token") == true)
     }
 
     private fun parsePlayerResponse(path: String) =

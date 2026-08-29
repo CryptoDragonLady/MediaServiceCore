@@ -19,7 +19,7 @@ internal class InnertubeContext(
         val screenHeightPoints = 1440
         val screenPixelDensity = 1
         val screenWidthPoints = 2560
-        val visitorData = options.visitorData ?: deviceInfo.visitorData
+        var visitorData = options.visitorData ?: deviceInfo.visitorData
         var clientName = options.clientName
         var clientVersion = if (options.clientName == "WEB") deviceInfo.clientVersion
             else CLIENTS.ALl[options.clientName]?.VERSION ?: deviceInfo.clientVersion

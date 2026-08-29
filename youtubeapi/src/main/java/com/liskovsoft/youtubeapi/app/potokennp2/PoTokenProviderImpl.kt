@@ -2,6 +2,7 @@ package com.liskovsoft.youtubeapi.app.potokennp2
 
 import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenProvider
 import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult
+import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenPairMinter
 import android.os.Handler
 import android.os.Looper
 import com.liskovsoft.sharedutils.helpers.DeviceHelpers
@@ -22,23 +23,31 @@ internal object PoTokenProviderImpl : PoTokenProvider {
 
     private object WebPoTokenGenLock
     private var webPoTokenVisitorData: String? = null
-    private var webPoTokenStreamingPot: String? = null
     private var webPoTokenGenerator: PoTokenGenerator? = null
     
     var poTokenFactory: PoTokenGenerator.Factory? = null
-    
-    override fun getWebClientPoToken(videoId: String): PoTokenResult? {
+
+    override fun getWebClientPoToken(
+        videoId: String,
+        visitorData: String,
+        streamingDataContentBinding: String
+    ): PoTokenResult? {
         if (!isWebPotSupported) {
             return null
         }
 
         try {
-            return getWebClientPoToken(videoId = videoId, forceRecreate = false)
+            return getWebClientPoToken(
+                videoId = videoId,
+                visitorData = visitorData,
+                streamingDataContentBinding = streamingDataContentBinding,
+                forceRecreate = false
+            )
         } catch (e: RuntimeException) {
             // RxJava's Single wraps exceptions into RuntimeErrors, so we need to unwrap them here
             when (val cause = e.cause) {
                 is BadWebViewException -> {
-                    Log.e(TAG, "Could not obtain poToken because WebView is broken", e)
+                    Log.e(TAG, "Could not obtain poToken because WebView is broken")
                     webViewBadImpl = true
                     return null
                 }
@@ -53,19 +62,17 @@ internal object PoTokenProviderImpl : PoTokenProvider {
      * case the current [webPoTokenGenerator] threw an error last time
      * [PoTokenGenerator.generatePoToken] was called
      */
-    private fun getWebClientPoToken(videoId: String, forceRecreate: Boolean): PoTokenResult {
-        // just a helper class since Kotlin does not have builtin support for 4-tuples
-        data class Quadruple<T1, T2, T3, T4>(val t1: T1, val t2: T2, val t3: T3, val t4: T4)
-
-        val (poTokenGenerator, visitorData, streamingPot, hasBeenRecreated) =
-            synchronized(WebPoTokenGenLock) {
-                val shouldRecreate = webPoTokenGenerator == null || webPoTokenVisitorData == null || webPoTokenStreamingPot == null ||
-                   forceRecreate || webPoTokenGenerator!!.isExpired()
+    private fun getWebClientPoToken(
+        videoId: String,
+        visitorData: String,
+        streamingDataContentBinding: String,
+        forceRecreate: Boolean
+    ): PoTokenResult = synchronized(WebPoTokenGenLock) {
+                val shouldRecreate = webPoTokenGenerator == null || webPoTokenVisitorData != visitorData ||
+                        forceRecreate || webPoTokenGenerator!!.isExpired()
 
                 if (shouldRecreate) {
-                    // MOD: my visitor data
-                    //webPoTokenVisitorData = AppService.instance().visitorData
-                    webPoTokenVisitorData = VisitorService.getVisitorData()
+                    webPoTokenVisitorData = visitorData
 
                     val latch = if (webPoTokenGenerator != null) CountDownLatch(1) else null
 
@@ -108,27 +115,15 @@ internal object PoTokenProviderImpl : PoTokenProvider {
                         }
                     }
 
-                    // The streaming poToken needs to be generated exactly once before generating
-                    // any other (player) tokens.
-                    webPoTokenStreamingPot = webPoTokenGenerator!!
-                        .generatePoToken(webPoTokenVisitorData!!)
                 }
 
-                return@synchronized Quadruple(
-                    webPoTokenGenerator!!,
-                    webPoTokenVisitorData!!,
-                    webPoTokenStreamingPot!!,
-                    shouldRecreate
-                )
+        val poTokenGenerator = requireNotNull(webPoTokenGenerator)
+        val (playerPot, streamingPot) = try {
+            PoTokenPairMinter.mint(videoId, streamingDataContentBinding) {
+                poTokenGenerator.generatePoToken(it)
             }
-
-        val playerPot = try {
-            // Not using synchronized here, since poTokenGenerator would be able to generate
-            // multiple poTokens in parallel if needed. The only important thing is for exactly one
-            // visitorData/streaming poToken to be generated before anything else.
-            if (videoId.isEmpty()) "" else poTokenGenerator.generatePoToken(videoId)
         } catch (throwable: Throwable) {
-            if (hasBeenRecreated) {
+            if (shouldRecreate) {
                 // the poTokenGenerator has just been recreated (and possibly this is already the
                 // second time we try), so there is likely nothing we can do
                 throw throwable
@@ -136,18 +131,23 @@ internal object PoTokenProviderImpl : PoTokenProvider {
                 // retry, this time recreating the [webPoTokenGenerator] from scratch;
                 // this might happen for example if NewPipe goes in the background and the WebView
                 // content is lost
-                Log.e(TAG, "Failed to obtain poToken, retrying", throwable)
-                return getWebClientPoToken(videoId = videoId, forceRecreate = true)
+                Log.e(TAG, "Failed to obtain poToken; recreating generator (${throwable.javaClass.simpleName})")
+                return getWebClientPoToken(
+                    videoId = videoId,
+                    visitorData = visitorData,
+                    streamingDataContentBinding = streamingDataContentBinding,
+                    forceRecreate = true
+                )
             }
         }
 
-        Log.d(
-            TAG,
-            "poToken for $videoId: playerPot=$playerPot, " +
-                    "streamingPot=$streamingPot, visitor_data=$visitorData"
-        )
+        Log.d(TAG, "Generated player and streaming poTokens")
 
-        return PoTokenResult(videoId, visitorData, playerPot, streamingPot)
+        return PoTokenResult(videoId, visitorData, playerPot, streamingPot, streamingDataContentBinding)
+    }
+
+    fun getOrCreateWebVisitorData(): String? = synchronized(WebPoTokenGenLock) {
+        webPoTokenVisitorData ?: VisitorService.getVisitorData()?.also { webPoTokenVisitorData = it }
     }
 
     override fun getWebEmbedClientPoToken(videoId: String): PoTokenResult? = null
@@ -162,6 +162,5 @@ internal object PoTokenProviderImpl : PoTokenProvider {
 
     fun resetCache() {
         webPoTokenVisitorData = null
-        webPoTokenStreamingPot = null
     }
 }

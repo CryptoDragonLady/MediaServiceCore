@@ -36,6 +36,11 @@ internal object PoTokenCloudService {
     }
 
     @JvmStatic
+    fun getPoToken(identifier: String): String? = runBlocking {
+        getPoTokenResponse(identifier)?.poToken
+    }
+
+    @JvmStatic
     fun getContentPoToken(videoId: String): String? = runBlocking {
         if (contentPot?.first != videoId) {
             contentPot = null
@@ -74,6 +79,7 @@ internal object PoTokenCloudService {
 
     fun resetCache() {
         MediaServiceData.instance().poToken = null
+        contentPot = null
     }
 
     //private suspend fun getPoTokenResponsePart(): PoTokenResponse? {
