@@ -7,17 +7,28 @@ import com.liskovsoft.youtubeapi.common.helpers.QueryBuilder;
 
 public class VideoInfoApiHelper {
     public static String getVideoInfoQuery(AppClient client, String videoId, String clickTrackingParams) {
-        return createCheckedQuery(client, videoId, clickTrackingParams, client == AppClient.GEO);
+        return getVideoInfoQuery(
+                client,
+                videoId,
+                clickTrackingParams,
+                PoTokenGate.getTokenResult(client, videoId)
+        );
+    }
+
+    static String getVideoInfoQuery(AppClient client, String videoId, String clickTrackingParams,
+                                    PoTokenResult poTokens) {
+        return createCheckedQuery(client, videoId, clickTrackingParams, client == AppClient.GEO, poTokens);
+    }
+
+    static String resolveVisitorData(PoTokenResult poTokens, String fallbackVisitorData) {
+        return poTokens != null ? poTokens.visitorData : fallbackVisitorData;
     }
 
     /**
      * NOTE: enableGeoFix - Should use protobuf to bypass geo blocking.
      */
-    private static String createCheckedQuery(AppClient client, String videoId, String clickTrackingParams, boolean enableGeoFix) {
-        // Important: use only for the clients that don't support auth.
-        // Otherwise, google suggestions and history won't work (visitor data bug)
-        PoTokenResult poTokens = PoTokenGate.getTokenResult(client, videoId);
-
+    private static String createCheckedQuery(AppClient client, String videoId, String clickTrackingParams,
+                                             boolean enableGeoFix, PoTokenResult poTokens) {
         return new QueryBuilder(client)
                 .setVideoId(videoId)
                 .setClickTrackingParams(clickTrackingParams)

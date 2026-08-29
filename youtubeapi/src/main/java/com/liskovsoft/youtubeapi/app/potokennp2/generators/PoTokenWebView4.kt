@@ -287,13 +287,23 @@ internal class PoTokenWebView4 private constructor(
         runOnMainThread {
             webView.evaluateJavascriptLegacy(
                 """try {
+                        integrityToken = $integrityToken
                         getMinter = webPoSignalOutput[0]
-                        mintCallback = getMinter($integrityToken)
-                        if (typeof mintCallback === 'undefined')
-                            $JS_INTERFACE.onJsInitializationError("mintCallback is not defined")
-                        ${JS_INTERFACE}.onJsInitializationDone($expirationTimeInSeconds)
-                        webPoSignalOutput = null
-                        getMinter = null
+                        if (!(getMinter instanceof Function))
+                            throw new Error("getMinter is not defined")
+                        Promise.resolve(getMinter(integrityToken)).then(function (result) {
+                            mintCallback = result
+                            if (!(mintCallback instanceof Function)) {
+                                ${JS_INTERFACE}.onJsInitializationError("mintCallback is not defined")
+                                return
+                            }
+                            ${JS_INTERFACE}.onJsInitializationDone($expirationTimeInSeconds)
+                            webPoSignalOutput = null
+                            getMinter = null
+                            integrityToken = null
+                        }, function (error) {
+                            ${JS_INTERFACE}.onJsInitializationError(error + "\n" + error.stack)
+                        })
                     } catch (error) {
                         ${JS_INTERFACE}.onJsInitializationError(error + "\n" + error.stack)
                     }""",
@@ -325,15 +335,17 @@ internal class PoTokenWebView4 private constructor(
         runOnMainThread {
             webView.evaluateJavascriptLegacy(
                 """try {
-                        poTokenU8 = obtainPoToken($u8Identifier)
-                        poTokenU8String = ""
-                        for (i = 0; i < poTokenU8.length; i++) {
-                            if (i != 0) poTokenU8String += ","
-                            poTokenU8String += poTokenU8[i]
-                        }
-                        $JS_INTERFACE.onObtainPoTokenResult("$identifier", poTokenU8String)
-                        poTokenU8 = null
-                        poTokenU8String = null
+                        obtainPoToken($u8Identifier).then(function (poTokenU8) {
+                            poTokenU8String = ""
+                            for (i = 0; i < poTokenU8.length; i++) {
+                                if (i != 0) poTokenU8String += ","
+                                poTokenU8String += poTokenU8[i]
+                            }
+                            $JS_INTERFACE.onObtainPoTokenResult("$identifier", poTokenU8String)
+                            poTokenU8String = null
+                        }, function (error) {
+                            $JS_INTERFACE.onObtainPoTokenError("$identifier", error + "\n" + error.stack)
+                        })
                     } catch (error) {
                         $JS_INTERFACE.onObtainPoTokenError("$identifier", error + "\n" + error.stack)
                     }""",

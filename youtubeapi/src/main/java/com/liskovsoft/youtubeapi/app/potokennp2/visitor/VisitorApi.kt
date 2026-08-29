@@ -4,6 +4,7 @@ import com.liskovsoft.youtubeapi.app.potokennp2.visitor.data.VisitorResult
 import com.liskovsoft.googlecommon.common.converters.gson.WithGson
 import retrofit2.Call
 import retrofit2.http.Body
+import retrofit2.http.Header
 import retrofit2.http.Headers
 import retrofit2.http.POST
 
@@ -15,11 +16,13 @@ internal interface VisitorApi {
         "Cookie: SOCS=CAE=",
         "Host: www.youtube.com",
         "Origin: https://www.youtube.com",
-        "Referer: https://www.youtube.com",
-        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0",
-        "X-Youtube-Client-Name: 1",
-        "X-Youtube-Client-Version: 2.20250213.05.00"
+        "Referer: https://www.youtube.com"
         )
     @POST("https://www.youtube.com/youtubei/v1/visitor_id")
-    fun getVisitorId(@Body query: String = VisitorApiHelper.getVisitorQuery()): Call<VisitorResult?>
+    fun getVisitorId(
+        @Body query: String = VisitorApiHelper.getVisitorQuery(),
+        @Header("User-Agent") userAgent: String = VisitorApiHelper.getUserAgent(),
+        @Header("X-Youtube-Client-Name") clientName: String? = VisitorApiHelper.getClientName(),
+        @Header("X-Youtube-Client-Version") clientVersion: String = VisitorApiHelper.getClientVersion()
+    ): Call<VisitorResult?>
 }

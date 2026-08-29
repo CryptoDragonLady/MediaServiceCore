@@ -1,6 +1,5 @@
 package com.liskovsoft.youtubeapi.common.helpers
 
-import com.liskovsoft.sharedutils.helpers.Helpers
 import com.liskovsoft.youtubeapi.app.AppService
 import com.liskovsoft.googlecommon.common.locale.LocaleManager
 import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService
@@ -74,9 +73,10 @@ internal class QueryBuilder(private val client: AppClient) {
             // E.g. web: 20522, tv: 20522001
             // NOTE: wrong timestamp format yield 'page should be reloaded' error (this happens on the tv variant at least)
             if (signatureTimestamp == null || signatureTimestamp == -1)
-                signatureTimestamp = Helpers.parseInt(appService.signatureTimestamp?.let {
-                    if (client.isTVClient && it.length == 5) it + "001" else it
-                }) // get it somewhere else?
+                signatureTimestamp = normalizeSignatureTimestamp(
+                    appService.signatureTimestamp,
+                    client.isTVClient
+                ) // get it somewhere else?
         }
 
         val json = """
@@ -314,4 +314,13 @@ internal class QueryBuilder(private val client: AppClient) {
 
     private fun playerDataCheck() = videoId != null && type == PostDataType.Player
     private fun browseDataCheck() = type == PostDataType.Browse
+
+    companion object {
+        internal fun normalizeSignatureTimestamp(timestamp: String?, isTvClient: Boolean): Int? {
+            val normalized = timestamp?.takeIf { it.isNotBlank() }?.let {
+                if (isTvClient && it.length == 5) it + "001" else it
+            }
+            return normalized?.toIntOrNull()?.takeIf { it >= 0 }
+        }
+    }
 }

@@ -7,6 +7,7 @@ import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.prefs.GlobalPreferences;
 import com.liskovsoft.youtubeapi.app.AppService;
 import com.liskovsoft.youtubeapi.app.PoTokenGate;
+import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult;
 import com.liskovsoft.youtubeapi.common.helpers.AppClient;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
@@ -206,8 +207,15 @@ public class VideoInfoService extends VideoInfoServiceBase {
         if (client == AppClient.INITIAL) {
             result = InitialResponseService.getVideoInfo(videoId, mAuthBlock);
         } else {
-            String videoInfoQuery = VideoInfoApiHelper.getVideoInfoQuery(client, videoId, clickTrackingParams);
-            result = getVideoInfo(client, videoInfoQuery);
+            PoTokenResult poTokens = PoTokenGate.getTokenResult(client, videoId);
+            String videoInfoQuery = VideoInfoApiHelper.getVideoInfoQuery(
+                    client,
+                    videoId,
+                    clickTrackingParams,
+                    poTokens
+            );
+            String visitorData = VideoInfoApiHelper.resolveVisitorData(poTokens, mAppService.getVisitorData());
+            result = executeVideoInfoRequest(client, videoInfoQuery, visitorData);
         }
 
         if (result != null) {
@@ -217,7 +225,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
         return result;
     }
 
-    private VideoInfo getVideoInfo(AppClient client, String videoInfoQuery) {
+    private VideoInfo executeVideoInfoRequest(AppClient client, String videoInfoQuery, String visitorData) {
         boolean auth = client.isAuthSupported() && mAuthBlock;
 
         if (client.isReelClient()) {
@@ -226,9 +234,19 @@ public class VideoInfoService extends VideoInfoServiceBase {
             return getVideoInfoReel(wrapper, auth);
         }
 
-        Call<VideoInfo> wrapper = mVideoInfoApi.getVideoInfo(videoInfoQuery, mAppService.getVisitorData(),
+        Call<VideoInfo> wrapper = mVideoInfoApi.getVideoInfo(videoInfoQuery, visitorData,
                 client.getUserAgent(), client.getInnerTubeName(), client.getClientVersion());
-        return getVideoInfo(wrapper, auth);
+        VideoInfo result = getVideoInfo(wrapper, auth);
+
+        if (result != null) {
+            Log.d(TAG, "Player response: client=%s, unplayable=%s, reason=%s, adaptive=%s, regular=%s, sabr=%s",
+                    client.name(), result.isUnplayable(), result.getPlayabilityStatus(),
+                    result.getAdaptiveFormats() != null ? result.getAdaptiveFormats().size() : 0,
+                    result.getRegularFormats() != null ? result.getRegularFormats().size() : 0,
+                    result.getServerAbrStreamingUrl() != null);
+        }
+
+        return result;
     }
 
     private @Nullable VideoInfo getVideoInfo(Call<VideoInfo> wrapper, boolean auth) {
