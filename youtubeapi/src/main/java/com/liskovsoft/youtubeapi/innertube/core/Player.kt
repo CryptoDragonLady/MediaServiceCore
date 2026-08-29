@@ -28,7 +28,7 @@ internal class Player private constructor(
 ) {
     private val TAG = Player::class.simpleName
 
-    val signatureTimestamp: String by lazy { appService.signatureTimestamp }
+    val signatureTimestamp: String? by lazy { appService.getSignatureTimestamp(playerUrl) }
     private val appService by lazy { AppService.instance() }
     private val dashInfoApi by lazy { RetrofitHelper.create(DashInfoApi::class.java) }
     private val fileApi by lazy { RetrofitHelper.create(FileApi::class.java) }
@@ -65,7 +65,7 @@ internal class Player private constructor(
         urlHolders.add(formatInfo.sabrUrlHolder)
 
         val result: Pair<MutableList<String?>?, MutableList<String?>?>? =
-            appService.bulkSigExtract(extractNParams(urlHolders), extractSParams(urlHolders))
+            appService.bulkSigExtract(playerUrl, extractNParams(urlHolders), extractSParams(urlHolders))
 
         if (result != null) {
             val nParams = result.first

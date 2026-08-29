@@ -18,19 +18,6 @@ internal class PlayerDataExtractor(val playerUrl: String) {
     private var sFuncCode: Boolean = false
     private var cpnCode: String? = null
     private var signatureTimestamp: String? = null
-    private val fixedPlayerUrl by lazy {
-        // Those are implements global helper functions. No fix. Fallback to regular.
-        // See https://github.com/yt-dlp/yt-dlp/issues/12398
-        // tv url: https://www.youtube.com/s/player/69b31e11/tv-player-es6-tce.vflset/tv-player-es6-tce.js
-        // web url: https://www.youtube.com/s/player/e12fbea4/player_ias_tce.vflset/en_US/base.js
-        playerUrl
-            //.replace("_tce", "") // global helper functions, web url
-            //.replace("/player_ias.vflset/en_US/base.js", "/tv-player-ias.vflset/tv-player-ias.js") // does not validate cpn
-            //.replace("-es6", "-ias") // es6 no supported
-            .replace("-tcl", "") // (403 fix, incompatible nParam, e.g. /tv-player-es6-tcl.vflset/tv-player-es6-tcl.js)
-            .replace("/tv-player-es6.vflset/tv-player-es6.js", "/player_es6.vflset/en_US/base.js") // 403 fix, incompatible nParam?
-            .replace("/tv-player-ias.vflset/tv-player-ias.js", "/player_ias.vflset/en_US/base.js") // 403 fix, incompatible nParam?
-    }
 
     init {
         // Get the code from the cache
@@ -104,11 +91,11 @@ internal class PlayerDataExtractor(val playerUrl: String) {
         var sProcessed: List<String?>? = null
 
         val nRequest = nParams?.takeIf { nFuncCode }?.filterNotNull()?.takeIf { it.isNotEmpty() }?.distinct()?.let {
-            JsChallengeRequest(JsChallengeType.N, ChallengeInput(fixedPlayerUrl, it))
+            JsChallengeRequest(JsChallengeType.N, ChallengeInput(playerUrl, it))
         }
 
         val sRequest = sParams?.takeIf { sFuncCode }?.filterNotNull()?.takeIf { it.isNotEmpty() }?.distinct()?.let {
-            JsChallengeRequest(JsChallengeType.SIG, ChallengeInput(fixedPlayerUrl, it))
+            JsChallengeRequest(JsChallengeType.SIG, ChallengeInput(playerUrl, it))
         }
 
         val result = V8ChallengeProvider.bulkSolve(listOfNotNull(nRequest, sRequest))
@@ -127,7 +114,7 @@ internal class PlayerDataExtractor(val playerUrl: String) {
     }
 
     private fun loadPlayer(): String? {
-        return YouTubeInfoExtractor.loadPlayerSilent(fixedPlayerUrl)
+        return YouTubeInfoExtractor.loadPlayerSilent(playerUrl)
     }
 
     private fun fetchAllData() {
@@ -177,8 +164,8 @@ internal class PlayerDataExtractor(val playerUrl: String) {
             val sigParam = "NJAJEij0EwRgIhAI0KExTgjfPk-MPM9MAdzyyPRt=BM8-XO5tm5hlMCSVpAiEAv7eP3CURqZNSPow8BXXAoazVoXgeMP7gH9BdylHCwgw=gwzz"
             val result = V8ChallengeProvider.bulkSolve(
                 listOf(
-                    JsChallengeRequest(JsChallengeType.N, ChallengeInput(fixedPlayerUrl, listOf(nParam))),
-                    JsChallengeRequest(JsChallengeType.SIG, ChallengeInput(fixedPlayerUrl, listOf(sigParam))),
+                    JsChallengeRequest(JsChallengeType.N, ChallengeInput(playerUrl, listOf(nParam))),
+                    JsChallengeRequest(JsChallengeType.SIG, ChallengeInput(playerUrl, listOf(sigParam))),
                 ))
 
             for (item in result) {

@@ -8,6 +8,7 @@ import com.liskovsoft.youtubeapi.app.PoTokenGate;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
 import com.liskovsoft.youtubeapi.formatbuilders.utils.MediaFormatUtils;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
+import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService;
 import com.liskovsoft.youtubeapi.videoinfo.V2.DashInfoApi;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoUrlHolder;
 import com.liskovsoft.youtubeapi.videoinfo.models.DashInfo;
@@ -65,7 +66,15 @@ public abstract class VideoInfoServiceBase {
             }
         urlHolders.add(videoInfo.getUrlHolder());
 
-        Pair<List<String>, List<String>> result = mAppService.bulkSigExtract(extractNParams(urlHolders), extractSParams(urlHolders));
+        String playerUrl = YtCfgService.INSTANCE.getPlayerUrl(
+                videoInfo.getClient(),
+                videoInfo.getVideoDetails().getVideoId()
+        );
+        Pair<List<String>, List<String>> result = mAppService.bulkSigExtract(
+                playerUrl,
+                extractNParams(urlHolders),
+                extractSParams(urlHolders)
+        );
 
         if (result != null) {
             List<String> nParams = result.getFirst();
