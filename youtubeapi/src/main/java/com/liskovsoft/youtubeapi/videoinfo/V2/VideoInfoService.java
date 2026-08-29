@@ -231,6 +231,12 @@ public class VideoInfoService extends VideoInfoServiceBase {
         if (result != null) {
             result.setClient(client);
             result.setClientPlaybackNonce(clientPlaybackNonce);
+            Log.d(TAG, "Player response: client=%s, unplayable=%s, reason=%s, adaptive=%s, regular=%s, sabr=%s, cpn=%s",
+                    client.name(), result.isUnplayable(), result.getPlayabilityStatus(),
+                    result.getAdaptiveFormats() != null ? result.getAdaptiveFormats().size() : 0,
+                    result.getRegularFormats() != null ? result.getRegularFormats().size() : 0,
+                    result.getServerAbrStreamingUrl() != null,
+                    result.getClientPlaybackNonce() != null);
         }
 
         return result;
@@ -247,18 +253,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
 
         Call<VideoInfo> wrapper = mVideoInfoApi.getVideoInfo(videoInfoQuery, visitorData,
                 client.getUserAgent(), client.getInnerTubeName(), client.getClientVersion());
-        VideoInfo result = getVideoInfo(wrapper, auth);
-
-        if (result != null) {
-            Log.d(TAG, "Player response: client=%s, unplayable=%s, reason=%s, adaptive=%s, regular=%s, sabr=%s, cpn=%s",
-                    client.name(), result.isUnplayable(), result.getPlayabilityStatus(),
-                    result.getAdaptiveFormats() != null ? result.getAdaptiveFormats().size() : 0,
-                    result.getRegularFormats() != null ? result.getRegularFormats().size() : 0,
-                    result.getServerAbrStreamingUrl() != null,
-                    result.getClientPlaybackNonce() != null);
-        }
-
-        return result;
+        return getVideoInfo(wrapper, auth);
     }
 
     private @Nullable VideoInfo getVideoInfo(Call<VideoInfo> wrapper, boolean auth) {
