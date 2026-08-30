@@ -36,7 +36,7 @@ internal object PoTokenGate {
     @JvmStatic
     @Synchronized
     fun getTokenResult(client: AppClient, videoId: String): PoTokenResult? {
-        if (!client.isWebPotRequired || videoId.isBlank()) {
+        if (!client.isWebPoTokenSupported || videoId.isBlank()) {
             return null
         }
 
@@ -87,7 +87,8 @@ internal object PoTokenGate {
         cacheExpiresAtMs = System.currentTimeMillis() + FALLBACK_TOKEN_LIFETIME_MS
         Log.d(
             TAG,
-            "Prepared WEB poTokens; GVS binding=${streamingBinding.type.name}, local=${localResult != null}"
+            "Prepared WEB poTokens; client=${client.name}, GVS binding=${streamingBinding.type.name}, " +
+                    "local=${localResult != null}"
         )
         return result
     }
@@ -110,7 +111,7 @@ internal object PoTokenGate {
 
     @JvmStatic
     fun getPlayerRequestPoToken(client: AppClient, videoId: String): String? =
-        getTokenResult(client, videoId)?.playerRequestPoToken
+        if (client.isPlayerPoTokenRequired) getTokenResult(client, videoId)?.playerRequestPoToken else null
 
     @JvmStatic
     fun getStreamingDataPoToken(client: AppClient, videoId: String): String? =
@@ -125,11 +126,11 @@ internal object PoTokenGate {
 
     @JvmStatic
     fun getColdStartPoToken(client: AppClient, videoId: String): String? =
-        if (client.isWebPotRequired) PoTokenService.generateColdStartToken(videoId) else null
+        if (client.isPlayerPoTokenRequired) PoTokenService.generateColdStartToken(videoId) else null
 
     @JvmStatic
     fun getVisitorData(client: AppClient): String? =
-        if (client.isWebPotRequired) webPoToken?.visitorData else null
+        if (client.isWebPoTokenSupported) webPoToken?.visitorData else null
 
     @JvmStatic
     fun isWebPotSupported() = PoTokenProviderImpl.isWebPotSupported
@@ -144,7 +145,7 @@ internal object PoTokenGate {
 
     @JvmStatic
     fun resetCache(client: AppClient): Boolean =
-        if (client.isWebPotRequired) resetWebCache() else false
+        if (client.isWebPoTokenSupported) resetWebCache() else false
 
     @JvmStatic
     fun resetCache() {
