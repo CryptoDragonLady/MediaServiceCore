@@ -67,7 +67,7 @@ public class VideoInfoApiHelper {
         return new QueryBuilder(client)
                 .setVideoId(videoId)
                 .setClickTrackingParams(clickTrackingParams)
-                .setPoToken(poTokens != null ? poTokens.playerRequestPoToken : null)
+                .setPoToken(client.isPlayerPoTokenRequired() && poTokens != null ? poTokens.playerRequestPoToken : null)
                 .setVisitorData(poTokens != null ? poTokens.visitorData : null)
                 .setClientPlaybackNonce(clientPlaybackNonce)
                 .setSignatureTimestamp(signatureTimestamp)

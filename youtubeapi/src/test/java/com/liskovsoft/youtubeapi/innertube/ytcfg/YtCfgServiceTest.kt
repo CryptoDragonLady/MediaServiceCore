@@ -45,6 +45,24 @@ class YtCfgServiceTest {
     }
 
     @Test
+    fun detectsTvLivingRoomGvsTokenExperiment() {
+        val tvYtCfg = JsonParser().parse(
+            """
+            {
+              "WEB_PLAYER_CONTEXT_CONFIGS": {
+                "WEB_PLAYER_CONTEXT_CONFIG_ID_LIVING_ROOM_WATCH": {
+                  "jsUrl": "/s/player/tv/tv-player-ias.js",
+                  "serializedExperimentFlags": "html5_generate_content_po_token=true"
+                }
+              }
+            }
+            """.trimIndent()
+        ).asJsonObject
+
+        assertEquals(true, YtCfgService.extractGvsPoTokenBinding(tvYtCfg, AppClient.TV_DOWNGRADED))
+    }
+
+    @Test
     fun clientsWithoutAPlayerPageUseWebWatchContextForChallenges() {
         assertEquals(AppClient.WEB, YtCfgService.selectPlayerConfigClient(AppClient.VISIONOS, "video-id"))
         assertEquals(AppClient.WEB, YtCfgService.selectPlayerConfigClient(AppClient.IOS, "video-id"))

@@ -70,17 +70,30 @@ internal object YtCfgService {
     }
 
     internal fun extractGvsPoTokenBinding(ytCfg: JsonObject?, client: AppClient): Boolean {
+        val configs = traverseObj(ytCfg, "WEB_PLAYER_CONTEXT_CONFIGS")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject ?: return false
         val preferredContext = if (client.isEmbedded) EMBEDDED_CONTEXT else WATCH_CONTEXT
-        val serializedFlags = traverseObj(
-            ytCfg,
-            "WEB_PLAYER_CONTEXT_CONFIGS",
-            preferredContext,
-            "serializedExperimentFlags"
-        )?.asString ?: return false
+        val preferredConfig = configs.get(preferredContext)
+        val candidateConfigs = if (preferredConfig != null) {
+            sequenceOf(preferredConfig)
+        } else {
+            configs.entrySet().asSequence().map { it.value }
+        }
 
-        return serializedFlags
-            .split('&')
-            .any { it == "html5_generate_content_po_token=true" }
+        return candidateConfigs
+            .mapNotNull { config ->
+                config.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    ?.get("serializedExperimentFlags")
+                    ?.takeIf { it.isJsonPrimitive }
+                    ?.asString
+            }
+            .any { serializedFlags ->
+                serializedFlags
+                    .split('&')
+                    .any { it == "html5_generate_content_po_token=true" }
+            }
     }
 
     private fun getPlayerConfig(client: AppClient, videoId: String?): CachedPlayerConfig? {
