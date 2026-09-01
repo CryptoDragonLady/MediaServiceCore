@@ -402,6 +402,15 @@ class YouTubeContentService implements ContentService {
         });
     }
 
+    @Override
+    public Observable<MediaGroup> getChannelLiveObserve(String channelId) {
+        return RxHelper.fromCallable(() -> {
+            checkSigned();
+            String canonicalId = UtilsService.canonicalChannelId(channelId);
+            return getBrowseService2().getChannelLive(canonicalId);
+        });
+    }
+
     @Nullable
     private List<MediaGroup> getChannelSortingOptions(String channelId) {
         checkSigned();
