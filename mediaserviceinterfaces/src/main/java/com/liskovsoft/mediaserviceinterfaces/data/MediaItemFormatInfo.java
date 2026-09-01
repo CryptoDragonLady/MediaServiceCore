@@ -62,6 +62,9 @@ public interface MediaItemFormatInfo extends FormatInfoProvision {
     String getPoToken();
     String getVisitorCookie();
     ClientInfo getClientInfo();
+    default PlaybackRequestContext getPlaybackRequestContext() {
+        return null;
+    }
 
     interface ClientInfo {
         String getClientName();

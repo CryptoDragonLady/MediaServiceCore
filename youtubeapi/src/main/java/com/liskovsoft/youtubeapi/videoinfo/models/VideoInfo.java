@@ -6,6 +6,7 @@ import com.liskovsoft.sharedutils.querystringparser.UrlQueryStringFactory;
 import com.liskovsoft.googlecommon.common.converters.jsonpath.JsonPath;
 import com.liskovsoft.googlecommon.common.helpers.ServiceHelper;
 import com.liskovsoft.googlecommon.common.models.V2.TextItem;
+import com.liskovsoft.mediaserviceinterfaces.data.PlaybackRequestContext;
 import com.liskovsoft.youtubeapi.common.helpers.AppClient;
 import com.liskovsoft.youtubeapi.videoinfo.models.formats.AdaptiveVideoFormat;
 import com.liskovsoft.youtubeapi.videoinfo.models.formats.RegularVideoFormat;
@@ -96,6 +97,9 @@ public class VideoInfo {
     @JsonPath("$.playerConfig.mediaCommonConfig.mediaUstreamerRequestConfig.videoPlaybackUstreamerConfig")
     private String mVideoPlaybackUstreamerConfig; // SABR config
 
+    @JsonPath("$.responseContext.mainAppWebResponseContext.datasyncId")
+    private String mDataSyncId;
+
     // Values used in tracking actions
     private String mEventId;
     private String mVisitorMonitoringData;
@@ -112,6 +116,7 @@ public class VideoInfo {
     private String mClientPlaybackNonce;
     private String mVisitorCookie;
     private AppClient mClient;
+    private PlaybackRequestContext mPlaybackRequestContext;
     private VideoUrlHolder mUrlHolder;
 
     public List<AdaptiveVideoFormat> getAdaptiveFormats() {
@@ -304,6 +309,10 @@ public class VideoInfo {
         return Helpers.toString(ServiceHelper.createInfo(mPlayabilityReason, mPlayabilityDescription));
     }
 
+    public String getRawPlayabilityStatus() {
+        return mPlayabilityStatus;
+    }
+
     public String getStoryboardSpec() {
         return mStoryboardSpec;
     }
@@ -354,6 +363,10 @@ public class VideoInfo {
 
     public String getVideoPlaybackUstreamerConfig() {
         return mVideoPlaybackUstreamerConfig;
+    }
+
+    public String getDataSyncId() {
+        return mDataSyncId;
     }
 
     /**
@@ -485,6 +498,14 @@ public class VideoInfo {
 
     public void setClient(AppClient client) {
         mClient = client;
+    }
+
+    public PlaybackRequestContext getPlaybackRequestContext() {
+        return mPlaybackRequestContext;
+    }
+
+    public void setPlaybackRequestContext(PlaybackRequestContext playbackRequestContext) {
+        mPlaybackRequestContext = playbackRequestContext;
     }
 
     public VideoUrlHolder getUrlHolder() {

@@ -81,4 +81,10 @@ class VideoInfoApiHelperTest {
             json.getAsJsonObject("context").getAsJsonObject("client").get("visitorData").asString
         )
     }
+
+    @Test
+    fun exactPlayerTimestampIsNormalizedForTvOnly() {
+        assertEquals(20522001, VideoInfoApiHelper.resolveSignatureTimestamp(AppClient.TV, "20522"))
+        assertEquals(20522, VideoInfoApiHelper.resolveSignatureTimestamp(AppClient.WEB, "20522"))
+    }
 }

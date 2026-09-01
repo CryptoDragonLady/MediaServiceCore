@@ -58,6 +58,21 @@ public class VideoInfoApiHelper {
         return poTokens != null ? poTokens.visitorData : fallbackVisitorData;
     }
 
+    static Integer resolveSignatureTimestamp(AppClient client, String signatureTimestamp) {
+        if (signatureTimestamp == null || signatureTimestamp.trim().isEmpty()) {
+            return null;
+        }
+
+        String normalized = client.isTVClient() && signatureTimestamp.length() == 5 ?
+                signatureTimestamp + "001" : signatureTimestamp;
+        try {
+            int result = Integer.parseInt(normalized);
+            return result >= 0 ? result : null;
+        } catch (NumberFormatException error) {
+            return null;
+        }
+    }
+
     /**
      * NOTE: enableGeoFix - Should use protobuf to bypass geo blocking.
      */

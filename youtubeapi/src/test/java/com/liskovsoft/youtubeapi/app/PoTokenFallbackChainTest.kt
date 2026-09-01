@@ -1,6 +1,8 @@
 package com.liskovsoft.youtubeapi.app
 
+import com.liskovsoft.youtubeapi.common.helpers.AppClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -31,5 +33,13 @@ class PoTokenFallbackChainTest {
         )
 
         assertNull(chain.getToken("video-id"))
+    }
+
+    @Test
+    fun cacheKeyIncludesActualStreamingBinding() {
+        val visitorBound = PoTokenCacheKey(AppClient.TV_DOWNGRADED, "video-id", "visitor-data")
+        val accountBound = PoTokenCacheKey(AppClient.TV_DOWNGRADED, "video-id", "data-sync-id")
+
+        assertNotEquals(visitorBound, accountBound)
     }
 }

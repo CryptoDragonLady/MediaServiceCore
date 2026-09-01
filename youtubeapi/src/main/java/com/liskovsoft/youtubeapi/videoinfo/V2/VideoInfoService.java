@@ -10,17 +10,21 @@ import com.liskovsoft.youtubeapi.app.PoTokenGate;
 import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult;
 import com.liskovsoft.youtubeapi.common.helpers.AppClient;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
+import com.liskovsoft.mediaserviceinterfaces.data.PlaybackRequestContext;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
 import com.liskovsoft.youtubeapi.innertube.initialresponse.InitialResponseService;
+import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService;
 import com.liskovsoft.youtubeapi.videoinfo.VideoInfoServiceBase;
 import com.liskovsoft.youtubeapi.videoinfo.models.CaptionTrack;
 import com.liskovsoft.youtubeapi.videoinfo.models.TranslationLanguage;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfo;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfoHls;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfoReel;
+import com.liskovsoft.youtubeapi.videoinfo.models.PlayerResponseAssessment;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import retrofit2.Call;
 
@@ -29,6 +33,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
     private static final AppClient IOS_CLIENT = AppClient.VISIONOS;
     private static final AppClient TV_CLIENT = AppClient.TV_DOWNGRADED;
     private static final AppClient WEB_CLIENT = AppClient.WEB_EMBED;
+    private static final AtomicLong NEXT_PLAYER_GENERATION = new AtomicLong();
     private static VideoInfoService sInstance;
     private final VideoInfoApi mVideoInfoApi;
     // TODO: tv clients are fully broken because of '-tcl' player
@@ -94,7 +99,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
 
         persistRecentTypeIfNeeded(result);
 
-        mIsUnplayable = result.isUnplayable();
+        mIsUnplayable = !PlayerResponseAssessment.assess(result).isUsable();
 
         return result;
     }
@@ -125,31 +130,36 @@ public class VideoInfoService extends VideoInfoServiceBase {
     }
 
     private VideoInfo firstPlayable(String videoId, String clickTrackingParams) {
-        VideoInfo result = firstInfoWith(videoId, clickTrackingParams, info -> !info.isUnplayable());
-
-        return result != null ? result : firstInfoWith(videoId, clickTrackingParams, info -> info.getRegularFormats() != null);
-    }
-
-    private interface InfoTester {
-        boolean test(VideoInfo info);
-    }
-
-    private VideoInfo firstInfoWith(String videoId, String clickTrackingParams, InfoTester infoTester) {
-        //final AppClient beginType = getDefaultClient();
         final AppClient beginType = mNextInfoType != null ? mNextInfoType : VIDEO_INFO_TYPE_LIST[0];
         AppClient nextType = beginType;
+        VideoInfo informativeFailure = null;
 
         do {
             VideoInfo result = getVideoInfoWithRentFix(nextType, videoId, clickTrackingParams);
 
-            if (result != null && infoTester.test(result)) {
-                return result;
+            if (result != null) {
+                PlayerResponseAssessment assessment = PlayerResponseAssessment.assess(result);
+                Log.d(TAG, "Player candidate: client=%s, %s", nextType.name(), assessment);
+                if (assessment.isUsable()) {
+                    return result;
+                }
+                if (informativeFailure == null && preservesFailureState(assessment.getOutcome())) {
+                    informativeFailure = result;
+                }
             }
 
             nextType = Helpers.getNextValue(VIDEO_INFO_TYPE_LIST, nextType);
         } while (nextType != beginType);
 
-        return null;
+        return informativeFailure;
+    }
+
+    private static boolean preservesFailureState(PlayerResponseAssessment.Outcome outcome) {
+        return outcome == PlayerResponseAssessment.Outcome.UPCOMING ||
+                outcome == PlayerResponseAssessment.Outcome.OFFLINE ||
+                outcome == PlayerResponseAssessment.Outcome.RESTRICTED ||
+                outcome == PlayerResponseAssessment.Outcome.LOGIN_REQUIRED ||
+                outcome == PlayerResponseAssessment.Outcome.AGE_RESTRICTED;
     }
 
     //private void initInfoTypeIfNeeded() {
@@ -210,36 +220,106 @@ public class VideoInfoService extends VideoInfoServiceBase {
     private VideoInfo getVideoInfo(AppClient client, String videoId, String clickTrackingParams) {
         VideoInfo result;
         String clientPlaybackNonce = null;
+        String visitorData = mAppService.getVisitorData();
+        String playerScriptIdentity = null;
+        String signatureTimestamp = null;
+        PoTokenResult poTokens = null;
+        boolean auth = client.isAuthSupported() && mUseAuth;
 
         if (client == AppClient.INITIAL) {
-            result = InitialResponseService.getVideoInfo(videoId, client.isAuthSupported() && mUseAuth);
+            result = InitialResponseService.getVideoInfo(videoId, auth);
         } else {
             mAppService.resetClientPlaybackNonce(); // unique value per client player request
             clientPlaybackNonce = mAppService.getClientPlaybackNonce();
-            PoTokenResult poTokens = PoTokenGate.getTokenResult(client, videoId);
+            poTokens = PoTokenGate.getTokenResult(client, videoId, auth, null);
+            if (poTokens != null && !videoId.equals(poTokens.videoId)) {
+                Log.e(TAG, "Rejecting mismatched player proof context; client=%s", client.name());
+                return null;
+            }
+            visitorData = VideoInfoApiHelper.resolveVisitorData(poTokens, visitorData);
+            playerScriptIdentity = YtCfgService.INSTANCE.getPlayerUrl(client, videoId);
+            signatureTimestamp = mAppService.getSignatureTimestamp(playerScriptIdentity);
             String videoInfoQuery = VideoInfoApiHelper.getVideoInfoQuery(
                     client,
                     videoId,
                     clickTrackingParams,
                     poTokens,
-                    clientPlaybackNonce
+                    clientPlaybackNonce,
+                    VideoInfoApiHelper.resolveSignatureTimestamp(client, signatureTimestamp)
             );
-            String visitorData = VideoInfoApiHelper.resolveVisitorData(poTokens, mAppService.getVisitorData());
             result = executeVideoInfoRequest(client, videoInfoQuery, visitorData);
         }
 
         if (result != null) {
             result.setClient(client);
             result.setClientPlaybackNonce(clientPlaybackNonce);
-            Log.d(TAG, "Player response: client=%s, unplayable=%s, reason=%s, adaptive=%s, regular=%s, sabr=%s, cpn=%s",
-                    client.name(), result.isUnplayable(), result.getPlayabilityStatus(),
-                    result.getAdaptiveFormats() != null ? result.getAdaptiveFormats().size() : 0,
-                    result.getRegularFormats() != null ? result.getRegularFormats().size() : 0,
-                    result.getServerAbrStreamingUrl() != null,
-                    result.getClientPlaybackNonce() != null);
+            PlaybackRequestContext context = createPlaybackRequestContext(
+                    videoId,
+                    client,
+                    auth,
+                    visitorData,
+                    result.getDataSyncId(),
+                    clientPlaybackNonce,
+                    playerScriptIdentity,
+                    signatureTimestamp,
+                    poTokens);
+            result.setPlaybackRequestContext(context);
+            result.setPoToken(context.getStreamingDataPoToken());
+            result.setPlayerRequestPoToken(context.getPlayerRequestPoToken());
+            Log.d(TAG, "Player response context: %s", context);
         }
 
         return result;
+    }
+
+    private static PlaybackRequestContext createPlaybackRequestContext(
+            String videoId,
+            AppClient client,
+            boolean auth,
+            String visitorData,
+            String dataSyncId,
+            String clientPlaybackNonce,
+            String playerScriptIdentity,
+            String signatureTimestamp,
+            PoTokenResult poTokens) {
+        PlaybackRequestContext.TokenBindingType bindingType = resolveStreamingBindingType(
+                videoId, visitorData, dataSyncId, poTokens);
+        return PlaybackRequestContext.builder(
+                        NEXT_PLAYER_GENERATION.incrementAndGet(), videoId, client)
+                .setAuthMode(auth ? PlaybackRequestContext.AuthMode.AUTHENTICATED :
+                        PlaybackRequestContext.AuthMode.ANONYMOUS)
+                .setVisitorData(visitorData)
+                .setDataSyncId(dataSyncId)
+                .setClientPlaybackNonce(clientPlaybackNonce)
+                .setPlayerScriptIdentity(playerScriptIdentity)
+                .setSignatureTimestamp(signatureTimestamp)
+                .setSolverIdentity(playerScriptIdentity != null ? "PLAYER_SCRIPT" : null)
+                .setPlayerRequestPoToken(poTokens != null ? poTokens.playerRequestPoToken : null)
+                .setStreamingDataPoToken(poTokens != null ? poTokens.streamingDataPoToken : null)
+                .setStreamingTokenBindingType(bindingType)
+                .setStreamingProofRequired(poTokens != null &&
+                        poTokens.streamingDataPoToken != null && client.isWebPoTokenSupported())
+                .build();
+    }
+
+    private static PlaybackRequestContext.TokenBindingType resolveStreamingBindingType(
+            String videoId,
+            String visitorData,
+            String dataSyncId,
+            PoTokenResult poTokens) {
+        if (poTokens == null || poTokens.streamingDataPoToken == null) {
+            return PlaybackRequestContext.TokenBindingType.NONE;
+        }
+        if (videoId.equals(poTokens.streamingDataContentBinding)) {
+            return PlaybackRequestContext.TokenBindingType.VIDEO_ID;
+        }
+        if (dataSyncId != null && dataSyncId.equals(poTokens.streamingDataContentBinding)) {
+            return PlaybackRequestContext.TokenBindingType.DATA_SYNC_ID;
+        }
+        if (visitorData != null && visitorData.equals(poTokens.streamingDataContentBinding)) {
+            return PlaybackRequestContext.TokenBindingType.VISITOR_DATA;
+        }
+        throw new IllegalStateException("Streaming proof has an unknown binding");
     }
 
     private VideoInfo executeVideoInfoRequest(AppClient client, String videoInfoQuery, String visitorData) {
@@ -293,7 +373,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
     }
 
     private void applyFixesIfNeeded(VideoInfo result, String videoId, String clickTrackingParams) {
-        if (result == null || result.isUnplayable()) {
+        if (result == null || !PlayerResponseAssessment.assess(result).isUsable()) {
             return;
         }
 
@@ -363,7 +443,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
     }
 
     private void persistRecentTypeIfNeeded(VideoInfo videoInfo) {
-        if (videoInfo == null || videoInfo.isUnplayable() || videoInfo.getClient() == mActualInfoType) {
+        if (videoInfo == null || !PlayerResponseAssessment.assess(videoInfo).isUsable() ||
+                videoInfo.getClient() == mActualInfoType) {
             return;
         }
 

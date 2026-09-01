@@ -4,6 +4,7 @@ import com.liskovsoft.mediaserviceinterfaces.data.MediaFormat;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemFormatInfo;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaItemStoryboard;
 import com.liskovsoft.mediaserviceinterfaces.data.MediaSubtitle;
+import com.liskovsoft.mediaserviceinterfaces.data.PlaybackRequestContext;
 import com.liskovsoft.sharedutils.helpers.Helpers;
 import com.liskovsoft.sharedutils.mylogger.Log;
 import com.liskovsoft.sharedutils.rx.RxHelper;
@@ -17,6 +18,7 @@ import com.liskovsoft.youtubeapi.formatbuilders.storyboard.YouTubeStoryParser.St
 import com.liskovsoft.youtubeapi.videoinfo.models.CaptionTrack;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoDetails;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfo;
+import com.liskovsoft.youtubeapi.videoinfo.models.PlayerResponseAssessment;
 import com.liskovsoft.youtubeapi.videoinfo.models.formats.AdaptiveVideoFormat;
 import com.liskovsoft.youtubeapi.videoinfo.models.formats.RegularVideoFormat;
 import io.reactivex.Observable;
@@ -68,6 +70,7 @@ public class YouTubeMediaItemFormatInfo implements MediaItemFormatInfo {
     private String mPoToken;
     private String mVisitorCookie;
     private AppClient mClient;
+    private PlaybackRequestContext mPlaybackRequestContext;
     private static final Pattern durationPattern1 = Pattern.compile("dur=([^&]*)");
     private static final Pattern durationPattern2 = Pattern.compile("/dur/([^/]*)");
 
@@ -123,7 +126,7 @@ public class YouTubeMediaItemFormatInfo implements MediaItemFormatInfo {
         formatInfo.mOfParam = videoInfo.getOfParam();
         // END Tracking params
         formatInfo.mStoryboardSpec = videoInfo.getStoryboardSpec();
-        formatInfo.mIsUnplayable = videoInfo.isUnplayable() && !formatInfo.containsUrlFormats();
+        formatInfo.mIsUnplayable = !PlayerResponseAssessment.assess(videoInfo).isUsable();
         formatInfo.mIsAuth = videoInfo.isAuth();
         formatInfo.mIsUnknownError = videoInfo.isUnknownRestricted();
         formatInfo.mPlayabilityStatus = videoInfo.getPlayabilityStatus();
@@ -141,6 +144,7 @@ public class YouTubeMediaItemFormatInfo implements MediaItemFormatInfo {
         formatInfo.mPoToken = videoInfo.getPoToken();
         formatInfo.mVisitorCookie = videoInfo.getVisitorCookie();
         formatInfo.mClient = videoInfo.getClient();
+        formatInfo.mPlaybackRequestContext = videoInfo.getPlaybackRequestContext();
 
         List<CaptionTrack> captionTracks = videoInfo.getCaptionTracks();
 
@@ -432,6 +436,11 @@ public class YouTubeMediaItemFormatInfo implements MediaItemFormatInfo {
     @Override
     public ClientInfo getClientInfo() {
         return mClient;
+    }
+
+    @Override
+    public PlaybackRequestContext getPlaybackRequestContext() {
+        return mPlaybackRequestContext;
     }
 
     @Override

@@ -7,6 +7,7 @@ import com.liskovsoft.googlecommon.common.api.FileApi;
 import com.liskovsoft.youtubeapi.app.PoTokenGate;
 import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
+import com.liskovsoft.mediaserviceinterfaces.data.PlaybackRequestContext;
 import com.liskovsoft.youtubeapi.formatbuilders.utils.MediaFormatUtils;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
 import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService;
@@ -17,6 +18,7 @@ import com.liskovsoft.youtubeapi.videoinfo.models.DashInfoContent;
 import com.liskovsoft.youtubeapi.videoinfo.models.DashInfoHeaders;
 import com.liskovsoft.youtubeapi.videoinfo.models.DashInfoUrl;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfo;
+import com.liskovsoft.youtubeapi.videoinfo.models.PlayerResponseAssessment;
 import com.liskovsoft.youtubeapi.videoinfo.models.formats.AdaptiveVideoFormat;
 import com.liskovsoft.youtubeapi.videoinfo.models.formats.VideoFormat;
 
@@ -38,7 +40,7 @@ public abstract class VideoInfoServiceBase {
     }
 
     protected void transformFormats(VideoInfo videoInfo) {
-        if (videoInfo == null || videoInfo.isUnplayable()) {
+        if (videoInfo == null || !PlayerResponseAssessment.assess(videoInfo).isUsable()) {
             return;
         }
 
@@ -67,10 +69,14 @@ public abstract class VideoInfoServiceBase {
             }
         urlHolders.add(videoInfo.getUrlHolder());
 
-        String playerUrl = YtCfgService.INSTANCE.getPlayerUrl(
-                videoInfo.getClient(),
-                videoInfo.getVideoDetails().getVideoId()
-        );
+        PlaybackRequestContext requestContext = videoInfo.getPlaybackRequestContext();
+        String videoId = requestContext != null ? requestContext.getVideoId() :
+                videoInfo.getVideoDetails().getVideoId();
+        if (requestContext != null) {
+            requestContext.requireVideo(videoId);
+        }
+        String playerUrl = requestContext != null ? requestContext.getPlayerScriptIdentity() :
+                YtCfgService.INSTANCE.getPlayerUrl(videoInfo.getClient(), videoId);
         Pair<List<String>, List<String>> result = mAppService.bulkSigExtract(
                 playerUrl,
                 extractNParams(urlHolders),
@@ -85,18 +91,24 @@ public abstract class VideoInfoServiceBase {
             applySignatures(urlHolders, signatures);
         }
 
-        applyPlaybackNonce(urlHolders, resolvePlaybackNonce(videoInfo, mAppService.getClientPlaybackNonce()));
+        String playbackNonce = requestContext != null ? requestContext.getClientPlaybackNonce() :
+                resolvePlaybackNonce(videoInfo, mAppService.getClientPlaybackNonce());
+        applyPlaybackNonce(urlHolders, playbackNonce);
 
-        PoTokenResult poTokens = PoTokenGate.getTokenResult(
-                videoInfo.getClient(),
-                videoInfo.getVideoDetails().getVideoId()
-        );
-        String streamingPoToken = poTokens != null ? poTokens.streamingDataPoToken : null;
+        PoTokenResult poTokens = requestContext == null ?
+                PoTokenGate.getTokenResult(videoInfo.getClient(), videoId) : null;
+        String streamingPoToken = requestContext != null ? requestContext.getStreamingDataPoToken() :
+                poTokens != null ? poTokens.streamingDataPoToken : null;
         videoInfo.setPoToken(streamingPoToken);
-        videoInfo.setPlayerRequestPoToken(poTokens != null ? poTokens.playerRequestPoToken : null);
+        videoInfo.setPlayerRequestPoToken(requestContext != null ? requestContext.getPlayerRequestPoToken() :
+                poTokens != null ? poTokens.playerRequestPoToken : null);
         applyStreamingPoToken(urlHolders, streamingPoToken);
         videoInfo.setDashManifestUrl(applyPoToken(videoInfo.getDashManifestUrl(), streamingPoToken));
-        videoInfo.setHlsManifestUrl(applyPoToken(videoInfo.getHlsManifestUrl(), streamingPoToken));
+        // Live HLS manifests are not GVS media URLs. Do not add a proof unless a future
+        // response explicitly models an HLS-specific requirement.
+        if (!videoInfo.isLive()) {
+            videoInfo.setHlsManifestUrl(applyPoToken(videoInfo.getHlsManifestUrl(), streamingPoToken));
+        }
     }
 
     private static List<String> extractSParams(List<VideoUrlHolder> urlHolders) {

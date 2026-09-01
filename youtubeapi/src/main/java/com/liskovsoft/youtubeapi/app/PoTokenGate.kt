@@ -13,12 +13,18 @@ import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService
 import com.liskovsoft.youtubeapi.app.potokencloud.PoTokenCloudService as LegacyPoTokenCloudService
 import com.liskovsoft.youtubeapi.app.potokencloud2.PoTokenCloudService as BgUtilsPoTokenCloudService
 
+internal data class PoTokenCacheKey(
+    val client: AppClient,
+    val videoId: String,
+    val streamingDataContentBinding: String
+)
+
 /** Coordinates client-specific player, GVS, and subtitle proof-of-origin tokens. */
 internal object PoTokenGate {
     private const val FALLBACK_TOKEN_LIFETIME_MS = 6 * 60 * 60 * 1_000L
     private val TAG = PoTokenGate::class.simpleName
     private var webPoToken: PoTokenResult? = null
-    private var cachedClient: AppClient? = null
+    private var cachedKey: PoTokenCacheKey? = null
     private var cacheUsesLocalGenerator = false
     private var cacheExpiresAtMs: Long = -1
     private var cacheResetTimeMs: Long = -1
@@ -34,16 +40,19 @@ internal object PoTokenGate {
     }
 
     @JvmStatic
+    fun getTokenResult(client: AppClient, videoId: String): PoTokenResult? =
+        getTokenResult(client, videoId, false, null)
+
+    @JvmStatic
     @Synchronized
-    fun getTokenResult(client: AppClient, videoId: String): PoTokenResult? {
+    fun getTokenResult(
+        client: AppClient,
+        videoId: String,
+        authenticated: Boolean,
+        dataSyncId: String?
+    ): PoTokenResult? {
         if (!client.isWebPoTokenSupported || videoId.isBlank()) {
             return null
-        }
-
-        webPoToken?.let {
-            if (cachedClient == client && it.videoId == videoId && !isWebPotExpired()) {
-                return it
-            }
         }
 
         val visitorData = PoTokenProviderImpl.getOrCreateWebVisitorData()
@@ -60,8 +69,17 @@ internal object PoTokenGate {
             PoTokenContext.GVS,
             videoId,
             visitorData,
+            dataSyncId = dataSyncId,
+            authenticated = authenticated,
             gvsBindToVideoId = gvsBindToVideoId
         ) ?: return null
+        val cacheKey = PoTokenCacheKey(client, videoId, streamingBinding.value)
+
+        webPoToken?.let {
+            if (cachedKey == cacheKey && !isWebPotExpired()) {
+                return it
+            }
+        }
 
         val localResult = try {
             PoTokenProviderImpl.getWebClientPoToken(
@@ -82,7 +100,7 @@ internal object PoTokenGate {
         ) ?: return null
 
         webPoToken = result
-        cachedClient = client
+        cachedKey = cacheKey
         cacheUsesLocalGenerator = localResult != null
         cacheExpiresAtMs = System.currentTimeMillis() + FALLBACK_TOKEN_LIFETIME_MS
         Log.d(
@@ -159,7 +177,7 @@ internal object PoTokenGate {
         }
 
         webPoToken = null
-        cachedClient = null
+        cachedKey = null
         cacheUsesLocalGenerator = false
         cacheExpiresAtMs = -1
         PoTokenProviderImpl.resetCache()
