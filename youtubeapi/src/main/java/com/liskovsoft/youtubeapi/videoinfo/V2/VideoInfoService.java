@@ -133,6 +133,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
         final AppClient beginType = mNextInfoType != null ? mNextInfoType : VIDEO_INFO_TYPE_LIST[0];
         AppClient nextType = beginType;
         VideoInfo informativeFailure = null;
+        VideoInfo bestLiveCandidate = null;
+        int bestLivePriority = Integer.MIN_VALUE;
 
         do {
             VideoInfo result = getVideoInfoWithRentFix(nextType, videoId, clickTrackingParams);
@@ -141,7 +143,19 @@ public class VideoInfoService extends VideoInfoServiceBase {
                 PlayerResponseAssessment assessment = PlayerResponseAssessment.assess(result);
                 Log.d(TAG, "Player candidate: client=%s, %s", nextType.name(), assessment);
                 if (assessment.isUsable()) {
-                    return result;
+                    // Preserve VOD latency. Active live playback is the only case where probing
+                    // bounded clients for an HLS response is worth the additional requests.
+                    if (!assessment.isLive()) {
+                        return result;
+                    }
+                    int priority = assessment.getLiveTransportPriority();
+                    if (priority > bestLivePriority) {
+                        bestLiveCandidate = result;
+                        bestLivePriority = priority;
+                    }
+                    if (assessment.getOutcome() == PlayerResponseAssessment.Outcome.USABLE_HLS_LIVE) {
+                        return result;
+                    }
                 }
                 if (informativeFailure == null && preservesFailureState(assessment.getOutcome())) {
                     informativeFailure = result;
@@ -151,7 +165,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
             nextType = Helpers.getNextValue(VIDEO_INFO_TYPE_LIST, nextType);
         } while (nextType != beginType);
 
-        return informativeFailure;
+        return bestLiveCandidate != null ? bestLiveCandidate : informativeFailure;
     }
 
     private static boolean preservesFailureState(PlayerResponseAssessment.Outcome outcome) {

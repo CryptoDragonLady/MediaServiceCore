@@ -241,6 +241,18 @@ public final class PlayerResponseAssessment {
         }
     }
 
+    /** Higher values are preferred while comparing bounded active-live client responses. */
+    public int getLiveTransportPriority() {
+        switch (mOutcome) {
+            case USABLE_HLS_LIVE: return 5;
+            case USABLE_DASH_LIVE: return 4;
+            case USABLE_ADAPTIVE: return 3;
+            case USABLE_DIRECT: return 2;
+            case USABLE_SABR: return 1;
+            default: return 0;
+        }
+    }
+
     public boolean isLive() {
         return mLive;
     }

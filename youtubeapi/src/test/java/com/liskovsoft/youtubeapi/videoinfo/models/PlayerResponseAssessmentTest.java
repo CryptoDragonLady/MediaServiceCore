@@ -39,6 +39,22 @@ public class PlayerResponseAssessmentTest {
     }
 
     @Test
+    public void liveTransportPriorityKeepsHlsAheadOfDashAndSabr() {
+        PlayerResponseAssessment hls = assess(
+                "OK", true, true, false, 2, 2, true, 0,
+                true, true, true, true);
+        PlayerResponseAssessment dash = assess(
+                "OK", true, true, false, 2, 2, true, 0,
+                false, true, true, true);
+        PlayerResponseAssessment sabr = assess(
+                "OK", true, true, false, 2, 2, false, 0,
+                false, false, true, true);
+
+        assertTrue(hls.getLiveTransportPriority() > dash.getLiveTransportPriority());
+        assertTrue(dash.getLiveTransportPriority() > sabr.getLiveTransportPriority());
+    }
+
+    @Test
     public void sabrRequiresEndpointConfigAndBothTrackTypes() {
         PlayerResponseAssessment complete = assess(
                 "OK", false, false, false, 2, 1, false, 0,
