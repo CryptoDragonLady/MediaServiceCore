@@ -104,11 +104,7 @@ public abstract class VideoInfoServiceBase {
                 poTokens != null ? poTokens.playerRequestPoToken : null);
         applyStreamingPoToken(urlHolders, streamingPoToken);
         videoInfo.setDashManifestUrl(applyPoToken(videoInfo.getDashManifestUrl(), streamingPoToken));
-        // Live HLS manifests are not GVS media URLs. Do not add a proof unless a future
-        // response explicitly models an HLS-specific requirement.
-        if (!videoInfo.isLive()) {
-            videoInfo.setHlsManifestUrl(applyPoToken(videoInfo.getHlsManifestUrl(), streamingPoToken));
-        }
+        videoInfo.setHlsManifestUrl(applyPoToken(videoInfo.getHlsManifestUrl(), streamingPoToken));
     }
 
     private static List<String> extractSParams(List<VideoUrlHolder> urlHolders) {

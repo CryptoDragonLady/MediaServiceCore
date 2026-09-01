@@ -12,6 +12,7 @@ import com.liskovsoft.youtubeapi.common.helpers.AppClient;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
 import com.liskovsoft.mediaserviceinterfaces.data.PlaybackRequestContext;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
+import com.liskovsoft.youtubeapi.service.YouTubeSignInService;
 import com.liskovsoft.youtubeapi.innertube.initialresponse.InitialResponseService;
 import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService;
 import com.liskovsoft.youtubeapi.videoinfo.VideoInfoServiceBase;
@@ -31,8 +32,12 @@ import retrofit2.Call;
 public class VideoInfoService extends VideoInfoServiceBase {
     private static final String TAG = VideoInfoService.class.getSimpleName();
     private static final AppClient IOS_CLIENT = AppClient.VISIONOS;
-    private static final AppClient TV_CLIENT = AppClient.TV_DOWNGRADED;
+    private static final AppClient[] AUTHENTICATED_FALLBACK_CLIENTS = {
+            AppClient.TV,
+            AppClient.TV_DOWNGRADED
+    };
     private static final AppClient WEB_CLIENT = AppClient.WEB_EMBED;
+    private static final long AUTHORIZATION_INIT_WAIT_MS = 5_000;
     private static final AtomicLong NEXT_PLAYER_GENERATION = new AtomicLong();
     private static VideoInfoService sInstance;
     private final VideoInfoApi mVideoInfoApi;
@@ -135,6 +140,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
         VideoInfo informativeFailure = null;
         VideoInfo bestLiveCandidate = null;
         int bestLivePriority = Integer.MIN_VALUE;
+        boolean authenticatedFallbackAttempted = false;
 
         do {
             VideoInfo result = getVideoInfoWithRentFix(nextType, videoId, clickTrackingParams);
@@ -142,6 +148,20 @@ public class VideoInfoService extends VideoInfoServiceBase {
             if (result != null) {
                 PlayerResponseAssessment assessment = PlayerResponseAssessment.assess(result);
                 Log.d(TAG, "Player candidate: client=%s, %s", nextType.name(), assessment);
+                if (!authenticatedFallbackAttempted && shouldTryAuthenticatedFallback(
+                        assessment.getOutcome())) {
+                    authenticatedFallbackAttempted = true;
+                    VideoInfo authenticated = firstAuthenticatedPlayable(
+                            videoId, clickTrackingParams);
+                    PlayerResponseAssessment authenticatedAssessment =
+                            PlayerResponseAssessment.assess(authenticated);
+                    if (authenticatedAssessment.isUsable()) {
+                        return authenticated;
+                    }
+                    if (preservesFailureState(authenticatedAssessment.getOutcome())) {
+                        informativeFailure = authenticated;
+                    }
+                }
                 if (assessment.isUsable()) {
                     // Preserve VOD latency. Active live playback is the only case where probing
                     // bounded clients for an HLS response is worth the additional requests.
@@ -165,7 +185,75 @@ public class VideoInfoService extends VideoInfoServiceBase {
             nextType = Helpers.getNextValue(VIDEO_INFO_TYPE_LIST, nextType);
         } while (nextType != beginType);
 
+        PlayerResponseAssessment failureAssessment =
+                PlayerResponseAssessment.assess(informativeFailure);
+        if (bestLiveCandidate == null && !authenticatedFallbackAttempted &&
+                shouldTryAuthenticatedFallback(failureAssessment.getOutcome())) {
+            VideoInfo authenticated = firstAuthenticatedPlayable(videoId, clickTrackingParams);
+            PlayerResponseAssessment authenticatedAssessment =
+                    PlayerResponseAssessment.assess(authenticated);
+            if (authenticatedAssessment.isUsable()) {
+                return authenticated;
+            }
+            if (preservesFailureState(authenticatedAssessment.getOutcome())) {
+                informativeFailure = authenticated;
+            }
+        }
+
         return bestLiveCandidate != null ? bestLiveCandidate : informativeFailure;
+    }
+
+    private VideoInfo firstAuthenticatedPlayable(String videoId, String clickTrackingParams) {
+        VideoInfo informativeFailure = null;
+        VideoInfo bestLiveCandidate = null;
+        int bestLivePriority = Integer.MIN_VALUE;
+        for (AppClient client : AUTHENTICATED_FALLBACK_CLIENTS) {
+            VideoInfo result = getVideoInfoWithRentFix(client, videoId, clickTrackingParams);
+            PlayerResponseAssessment assessment = PlayerResponseAssessment.assess(result);
+            Log.d(TAG, "Authenticated player fallback: client=%s, %s",
+                    client.name(), assessment);
+            if (assessment.isUsable()) {
+                if (!assessment.isLive()) {
+                    return result;
+                }
+                int priority = assessment.getLiveTransportPriority();
+                if (priority > bestLivePriority) {
+                    bestLiveCandidate = result;
+                    bestLivePriority = priority;
+                }
+                if (assessment.getOutcome() ==
+                        PlayerResponseAssessment.Outcome.USABLE_HLS_LIVE) {
+                    return result;
+                }
+            }
+            if (informativeFailure == null && preservesFailureState(assessment.getOutcome())) {
+                informativeFailure = result;
+            }
+        }
+        return bestLiveCandidate != null ? bestLiveCandidate : informativeFailure;
+    }
+
+    static boolean shouldTryAuthenticatedFallback(
+            PlayerResponseAssessment.Outcome outcome, boolean signedIn) {
+        return signedIn && outcome == PlayerResponseAssessment.Outcome.LOGIN_REQUIRED;
+    }
+
+    private static boolean shouldTryAuthenticatedFallback(
+            PlayerResponseAssessment.Outcome outcome) {
+        if (outcome != PlayerResponseAssessment.Outcome.LOGIN_REQUIRED) {
+            return false;
+        }
+
+        boolean playbackAuthorized = YouTubeSignInService.instance()
+                .awaitPlaybackAuthorization(AUTHORIZATION_INIT_WAIT_MS);
+        return shouldTryAuthenticatedFallback(outcome, playbackAuthorized);
+    }
+
+    static boolean shouldPreparePoTokens(AppClient client) {
+        // Current TVHTML5 media URLs are authorized by their authenticated player response and
+        // do not require WEB proof tokens. Injecting a separately minted GVS token changes the
+        // signed media request and can make otherwise valid HLS, DASH, and SABR URLs return 403.
+        return client != null && client.isWebPoTokenSupported() && !client.isTVClient();
     }
 
     private static boolean preservesFailureState(PlayerResponseAssessment.Outcome outcome) {
@@ -245,7 +333,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
         } else {
             mAppService.resetClientPlaybackNonce(); // unique value per client player request
             clientPlaybackNonce = mAppService.getClientPlaybackNonce();
-            poTokens = PoTokenGate.getTokenResult(client, videoId, auth, null);
+            poTokens = shouldPreparePoTokens(client) ?
+                    PoTokenGate.getTokenResult(client, videoId, auth, null) : null;
             if (poTokens != null && !videoId.equals(poTokens.videoId)) {
                 Log.e(TAG, "Rejecting mismatched player proof context; client=%s", client.name());
                 return null;

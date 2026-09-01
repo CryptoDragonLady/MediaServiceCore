@@ -16,25 +16,30 @@ import io.reactivex.Observable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class YouTubeSignInService implements SignInService {
     private static final String TAG = YouTubeSignInService.class.getSimpleName();
     private static final long TOKEN_REFRESH_PERIOD_MS = 60 * 60 * 1_000; // NOTE: auth token max lifetime is 60 min
     private static YouTubeSignInService sInstance;
     private final YouTubeAccountManager mAccountManager;
-    private String mCachedAuthorizationHeader;
+    private final CountDownLatch mInitializationComplete = new CountDownLatch(1);
+    private volatile String mCachedAuthorizationHeader;
     private long mCacheUpdateTime;
 
     private YouTubeSignInService() {
         mAccountManager = YouTubeAccountManager.instance(this);
 
         GlobalPreferences.setOnInit(() -> {
-            mAccountManager.init();
             try {
+                mAccountManager.init();
                 updateAuthHeadersIfNeeded();
             } catch (Exception e) {
                 // Host not found
                 e.printStackTrace();
+            } finally {
+                mInitializationComplete.countDown();
             }
         });
     }
@@ -80,6 +85,52 @@ public class YouTubeSignInService implements SignInService {
     public boolean isSigned() {
         // Condition created for the case when a device in offline mode.
         return mAccountManager.getSelectedAccount() != null;
+    }
+
+    /**
+     * Waits briefly for the asynchronous account restore and access-token refresh used at app
+     * startup. Player requests can otherwise race the restore, incorrectly treating an existing
+     * account as anonymous after YouTube returns a typed LOGIN_REQUIRED response.
+     */
+    public boolean awaitPlaybackAuthorization(long timeoutMs) {
+        if (isPlaybackAuthorizationReady()) {
+            return true;
+        }
+
+        // Restore persisted accounts on this request thread as well. The normal initialization
+        // remains asynchronous, but a player request may be the first consumer after process start.
+        mAccountManager.init();
+
+        try {
+            mInitializationComplete.await(Math.max(0, timeoutMs), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+
+        if (!isPlaybackAuthorizationReady() && isSigned()) {
+            // Retry a failed startup refresh once. The underlying HTTP client supplies the network
+            // timeout; this path is entered only for a typed player LOGIN_REQUIRED response.
+            try {
+                checkAuth();
+            } catch (RuntimeException e) {
+                Log.e(TAG, "Playback authorization refresh failed");
+            }
+        }
+
+        boolean ready = isPlaybackAuthorizationReady();
+        Log.d(TAG, "Playback authorization readiness: selected=%s;cached=%s;retrofit=%s;ready=%s",
+                getSelectedAccount() != null,
+                mCachedAuthorizationHeader != null,
+                RetrofitOkHttpHelper.getAuthHeaders().get("Authorization") != null,
+                ready);
+        return ready;
+    }
+
+    private boolean isPlaybackAuthorizationReady() {
+        return mAccountManager.getSelectedAccount() != null &&
+                (mCachedAuthorizationHeader != null ||
+                        RetrofitOkHttpHelper.getAuthHeaders().get("Authorization") != null);
     }
 
     @Override
