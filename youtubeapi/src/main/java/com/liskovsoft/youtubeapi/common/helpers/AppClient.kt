@@ -17,6 +17,8 @@ private const val POST_DATA_BROWSE_TV =
 private const val POST_DATA_BROWSE_TV_LEGACY =
     "\"tvAppInfo\":{\"appQuality\":\"TV_APP_QUALITY_LIMITED_ANIMATION\",\"zylonLeftNav\":true},\"webpSupport\":false,\"animatedWebpSupport\":true,"
 private const val POST_DATA_IOS_MODEL = "\"deviceModel\":\"%s\",\"osVersion\":\"%s\","
+private const val POST_DATA_VISIONOS_MODEL =
+    "\"deviceMake\":\"%s\",\"deviceModel\":\"%s\",\"osName\":\"%s\",\"osVersion\":\"%s\",\"platform\":\"MOBILE\","
 private const val POST_DATA_ANDROID_OS = "\"osName\":\"Android\",\"osVersion\":\"%s\","
 private const val POST_DATA_ANDROID_SDK = "\"androidSdkVersion\":\"%s\","
 private const val POST_DATA_ANDROID_MODEL = "\"deviceModel\":\"%s\",\"deviceMake\":\"%s\","
@@ -29,7 +31,8 @@ private const val CLIENT_SCREEN_EMBED = "EMBED" // no 18+ restriction but not al
  */
 internal enum class AppClient(
     @JvmField val clientName: String, @JvmField val clientVersion: String, val innerTubeName: String?, @JvmField val userAgent: String, val referer: String?,
-    val clientScreen: String = CLIENT_SCREEN_WATCH, val params: String? = null, val postData: String? = null, val postDataBrowse: String? = null
+    val clientScreen: String = CLIENT_SCREEN_WATCH, val params: String? = null, val postData: String? = null, val postDataBrowse: String? = null,
+    private val osNameValue: String = "Macintosh", private val osVersionValue: String = "10_15_7"
 ): MediaItemFormatInfo.ClientInfo {
     // Doesn't support 8AEB2AMB param if X-Goog-Pageid is set!
     TV(CLIENTS.TV.NAME, CLIENTS.TV.VERSION, CLIENT_NAME_IDS[CLIENTS.TV.NAME],
@@ -69,21 +72,27 @@ internal enum class AppClient(
                 + String.format(POST_DATA_ANDROID_OS, CLIENTS.ANDROID_VR.OS_VERSION)
                 + String.format(POST_DATA_ANDROID_MODEL, CLIENTS.ANDROID_VR.DEVICE_MODEL, CLIENTS.ANDROID_VR.DEVICE_MAKE)),
     IOS(CLIENTS.IOS.NAME, CLIENTS.IOS.VERSION, CLIENT_NAME_IDS[CLIENTS.IOS.NAME],
-        userAgent = CLIENTS.IOS.USER_AGENT!!, referer = null, postData = String.format(POST_DATA_IOS_MODEL, CLIENTS.IOS.DEVICE_MODEL, CLIENTS.IOS.OS_VERSION)),
+        userAgent = CLIENTS.IOS.USER_AGENT!!, referer = null,
+        postData = String.format(POST_DATA_IOS_MODEL, CLIENTS.IOS.DEVICE_MODEL, CLIENTS.IOS.OS_VERSION),
+        osNameValue = CLIENTS.IOS.OS_NAME!!, osVersionValue = CLIENTS.IOS.OS_VERSION!!),
     VISIONOS(CLIENTS.VISIONOS.NAME, CLIENTS.VISIONOS.VERSION, CLIENT_NAME_IDS[CLIENTS.VISIONOS.NAME],
-        userAgent = CLIENTS.VISIONOS.USER_AGENT!!, referer = null, postData = String.format(POST_DATA_IOS_MODEL, CLIENTS.VISIONOS.DEVICE_MODEL, CLIENTS.VISIONOS.OS_VERSION)),
+        userAgent = CLIENTS.VISIONOS.USER_AGENT!!, referer = null,
+        postData = String.format(POST_DATA_VISIONOS_MODEL, CLIENTS.VISIONOS.DEVICE_MAKE,
+            CLIENTS.VISIONOS.DEVICE_MODEL, CLIENTS.VISIONOS.OS_NAME, CLIENTS.VISIONOS.OS_VERSION),
+        osNameValue = CLIENTS.VISIONOS.OS_NAME!!, osVersionValue = CLIENTS.VISIONOS.OS_VERSION!!),
     INITIAL(WEB),
     GEO(WEB);
 
     constructor(baseClient: AppClient, clientVersion: String? = null, userAgent: String? = null, postData: String? = null, postDataBrowse: String? = null):
             this(baseClient.clientName, clientVersion ?: baseClient.clientVersion, baseClient.innerTubeName,
         userAgent ?: baseClient.userAgent, baseClient.referer, baseClient.clientScreen, baseClient.params,
-        postData ?: baseClient.postData, postDataBrowse ?: baseClient.postDataBrowse)
+        postData ?: baseClient.postData, postDataBrowse ?: baseClient.postDataBrowse,
+        baseClient.osNameValue, baseClient.osVersionValue)
 
     override fun getClientName() = clientName
     override fun getClientVersion() = clientVersion
-    override fun getOsName() = "Macintosh" // TODO: change later
-    override fun getOsVersion() = "10_15_7" // TODO: change later
+    override fun getOsName() = osNameValue
+    override fun getOsVersion() = osVersionValue
     override fun getUserAgent() = userAgent
 
     fun getRefererUrl(videoId: String?): String? {

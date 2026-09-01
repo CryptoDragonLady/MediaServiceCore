@@ -52,12 +52,12 @@ internal object CLIENTS {
 
     val VISIONOS = CLIENT(
         NAME = "VISIONOS",
-        VERSION = "1.02",
-        USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+        VERSION = "1.04",
+        USER_AGENT = "com.google.visionos.youtube/1.04(RealityDevice17,1; U; CPU visionOS 26_6_0 like Mac OS X; US)",
         DEVICE_MAKE = "Apple",
         DEVICE_MODEL = "RealityDevice17,1",
         OS_NAME = "visionOS",
-        OS_VERSION = "26.5.23O471"
+        OS_VERSION = "26.6.0.23O770"
     )
 
     val WEB = CLIENT(

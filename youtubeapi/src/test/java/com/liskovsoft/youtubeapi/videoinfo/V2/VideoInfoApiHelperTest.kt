@@ -56,6 +56,23 @@ class VideoInfoApiHelperTest {
     }
 
     @Test
+    fun visionOsPlayerQueryUsesVisitorFromItsBootstrapRequest() {
+        val query = VideoInfoApiHelper.getVideoInfoQuery(
+            AppClient.VISIONOS,
+            "video-id",
+            null,
+            null,
+            "request-nonce-02",
+            12345,
+            "vision-visitor"
+        )
+        val client = JsonParser().parse(query).asJsonObject
+            .getAsJsonObject("context").getAsJsonObject("client")
+
+        assertEquals("vision-visitor", client.get("visitorData").asString)
+    }
+
+    @Test
     fun tvStreamingProofDoesNotBecomeAPlayerRequestProof() {
         val tokens = PoTokenResult(
             "video-id",

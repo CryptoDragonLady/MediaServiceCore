@@ -43,6 +43,14 @@ public class VideoInfoApiHelper {
     static String getVideoInfoQuery(AppClient client, String videoId, String clickTrackingParams,
                                     PoTokenResult poTokens, String clientPlaybackNonce,
                                     Integer signatureTimestamp) {
+        return getVideoInfoQuery(client, videoId, clickTrackingParams, poTokens,
+                clientPlaybackNonce, signatureTimestamp,
+                poTokens != null ? poTokens.visitorData : null);
+    }
+
+    static String getVideoInfoQuery(AppClient client, String videoId, String clickTrackingParams,
+                                    PoTokenResult poTokens, String clientPlaybackNonce,
+                                    Integer signatureTimestamp, String visitorData) {
         return createCheckedQuery(
                 client,
                 videoId,
@@ -50,8 +58,13 @@ public class VideoInfoApiHelper {
                 client == AppClient.GEO,
                 poTokens,
                 clientPlaybackNonce,
-                signatureTimestamp
+                signatureTimestamp,
+                visitorData
         );
+    }
+
+    static String getVisitorDataQuery(AppClient client) {
+        return new QueryBuilder(client).build();
     }
 
     static String resolveVisitorData(PoTokenResult poTokens, String fallbackVisitorData) {
@@ -73,17 +86,16 @@ public class VideoInfoApiHelper {
         }
     }
 
-    /**
-     * NOTE: enableGeoFix - Should use protobuf to bypass geo blocking.
-     */
+    /** NOTE: enableGeoFix uses protobuf to bypass geo blocking. */
     private static String createCheckedQuery(AppClient client, String videoId, String clickTrackingParams,
                                              boolean enableGeoFix, PoTokenResult poTokens,
-                                             String clientPlaybackNonce, Integer signatureTimestamp) {
+                                             String clientPlaybackNonce, Integer signatureTimestamp,
+                                             String visitorData) {
         return new QueryBuilder(client)
                 .setVideoId(videoId)
                 .setClickTrackingParams(clickTrackingParams)
                 .setPoToken(client.isPlayerPoTokenRequired() && poTokens != null ? poTokens.playerRequestPoToken : null)
-                .setVisitorData(poTokens != null ? poTokens.visitorData : null)
+                .setVisitorData(visitorData)
                 .setClientPlaybackNonce(clientPlaybackNonce)
                 .setSignatureTimestamp(signatureTimestamp)
                 .enableGeoFix(enableGeoFix) // may broke other functionality

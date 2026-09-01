@@ -10,18 +10,23 @@ import com.liskovsoft.youtubeapi.app.PoTokenGate;
 import com.liskovsoft.youtubeapi.app.potokennp2.core.PoTokenResult;
 import com.liskovsoft.youtubeapi.common.helpers.AppClient;
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper;
+import com.liskovsoft.googlecommon.common.helpers.YouTubeHelper;
 import com.liskovsoft.mediaserviceinterfaces.data.PlaybackRequestContext;
+import com.liskovsoft.mediaserviceinterfaces.data.PlaybackDebugMode;
 import com.liskovsoft.youtubeapi.service.internal.MediaServiceData;
 import com.liskovsoft.youtubeapi.service.YouTubeSignInService;
 import com.liskovsoft.youtubeapi.innertube.initialresponse.InitialResponseService;
 import com.liskovsoft.youtubeapi.innertube.ytcfg.YtCfgService;
 import com.liskovsoft.youtubeapi.videoinfo.VideoInfoServiceBase;
+import com.liskovsoft.youtubeapi.videoinfo.ManifestUrlTransformer;
 import com.liskovsoft.youtubeapi.videoinfo.models.CaptionTrack;
 import com.liskovsoft.youtubeapi.videoinfo.models.TranslationLanguage;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfo;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfoHls;
 import com.liskovsoft.youtubeapi.videoinfo.models.VideoInfoReel;
 import com.liskovsoft.youtubeapi.videoinfo.models.PlayerResponseAssessment;
+import com.liskovsoft.youtubeapi.videoinfo.models.VisitorDataResponse;
+import com.liskovsoft.youtubeapi.videoinfo.models.formats.VideoFormat;
 
 import java.util.Arrays;
 import java.util.List;
@@ -135,6 +140,14 @@ public class VideoInfoService extends VideoInfoServiceBase {
     }
 
     private VideoInfo firstPlayable(String videoId, String clickTrackingParams) {
+        if (PlaybackDebugMode.get() ==
+                PlaybackDebugMode.Mode.FORCE_VISIONOS_HLS_REFERENCE) {
+            VideoInfo forced = getVideoInfoWithRentFix(
+                    AppClient.VISIONOS, videoId, clickTrackingParams);
+            Log.d(TAG, "Forced reference candidate: client=VISIONOS, %s",
+                    PlayerResponseAssessment.assess(forced));
+            return forced;
+        }
         final AppClient beginType = mNextInfoType != null ? mNextInfoType : VIDEO_INFO_TYPE_LIST[0];
         AppClient nextType = beginType;
         VideoInfo informativeFailure = null;
@@ -333,6 +346,13 @@ public class VideoInfoService extends VideoInfoServiceBase {
         } else {
             mAppService.resetClientPlaybackNonce(); // unique value per client player request
             clientPlaybackNonce = mAppService.getClientPlaybackNonce();
+            if (client == AppClient.VISIONOS) {
+                visitorData = getVisionOsVisitorData(client);
+                if (visitorData == null) {
+                    Log.e(TAG, "VisionOS visitor bootstrap failed");
+                    return null;
+                }
+            }
             poTokens = shouldPreparePoTokens(client) ?
                     PoTokenGate.getTokenResult(client, videoId, auth, null) : null;
             if (poTokens != null && !videoId.equals(poTokens.videoId)) {
@@ -348,9 +368,10 @@ public class VideoInfoService extends VideoInfoServiceBase {
                     clickTrackingParams,
                     poTokens,
                     clientPlaybackNonce,
-                    VideoInfoApiHelper.resolveSignatureTimestamp(client, signatureTimestamp)
+                    VideoInfoApiHelper.resolveSignatureTimestamp(client, signatureTimestamp),
+                    visitorData
             );
-            result = executeVideoInfoRequest(client, videoInfoQuery, visitorData);
+            result = executeVideoInfoRequest(client, videoId, videoInfoQuery, visitorData);
         }
 
         if (result != null) {
@@ -365,7 +386,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
                     clientPlaybackNonce,
                     playerScriptIdentity,
                     signatureTimestamp,
-                    poTokens);
+                    poTokens,
+                    resolveExpiryAtEpochMs(result));
             result.setPlaybackRequestContext(context);
             result.setPoToken(context.getStreamingDataPoToken());
             result.setPlayerRequestPoToken(context.getPlayerRequestPoToken());
@@ -384,7 +406,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
             String clientPlaybackNonce,
             String playerScriptIdentity,
             String signatureTimestamp,
-            PoTokenResult poTokens) {
+            PoTokenResult poTokens,
+            long expiresAtEpochMs) {
         PlaybackRequestContext.TokenBindingType bindingType = resolveStreamingBindingType(
                 videoId, visitorData, dataSyncId, poTokens);
         return PlaybackRequestContext.builder(
@@ -402,6 +425,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
                 .setStreamingTokenBindingType(bindingType)
                 .setStreamingProofRequired(poTokens != null &&
                         poTokens.streamingDataPoToken != null && client.isWebPoTokenSupported())
+                .setExpiresAtEpochMs(expiresAtEpochMs)
                 .build();
     }
 
@@ -425,7 +449,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
         throw new IllegalStateException("Streaming proof has an unknown binding");
     }
 
-    private VideoInfo executeVideoInfoRequest(AppClient client, String videoInfoQuery, String visitorData) {
+    private VideoInfo executeVideoInfoRequest(AppClient client, String videoId,
+                                              String videoInfoQuery, String visitorData) {
         boolean auth = client.isAuthSupported() && mUseAuth;
 
         if (client.isReelClient()) {
@@ -434,9 +459,40 @@ public class VideoInfoService extends VideoInfoServiceBase {
             return getVideoInfoReel(wrapper, auth);
         }
 
+        if (client == AppClient.VISIONOS) {
+            Call<VideoInfo> wrapper = mVideoInfoApi.getVideoInfoVisionOs(
+                    videoInfoQuery, visitorData, client.getUserAgent(), client.getInnerTubeName(),
+                    client.getClientVersion(), YouTubeHelper.generateTParameter(), videoId);
+            return getVideoInfo(wrapper, auth);
+        }
+
         Call<VideoInfo> wrapper = mVideoInfoApi.getVideoInfo(videoInfoQuery, visitorData,
                 client.getUserAgent(), client.getInnerTubeName(), client.getClientVersion());
         return getVideoInfo(wrapper, auth);
+    }
+
+    private static long resolveExpiryAtEpochMs(VideoInfo videoInfo) {
+        long expiry = minExpiry(-1, videoInfo.getHlsManifestUrl());
+        expiry = minExpiry(expiry, videoInfo.getDashManifestUrl());
+        expiry = minExpiry(expiry, videoInfo.getServerAbrStreamingUrl());
+        expiry = minFormatExpiry(expiry, videoInfo.getAdaptiveFormats());
+        return minFormatExpiry(expiry, videoInfo.getRegularFormats());
+    }
+
+    private static long minFormatExpiry(long expiry, List<? extends VideoFormat> formats) {
+        if (formats != null) {
+            for (VideoFormat format : formats) {
+                if (format != null) {
+                    expiry = minExpiry(expiry, format.getUrl());
+                }
+            }
+        }
+        return expiry;
+    }
+
+    private static long minExpiry(long current, String url) {
+        long candidate = ManifestUrlTransformer.extractExpiryEpochMs(url);
+        return candidate > 0 && (current <= 0 || candidate < current) ? candidate : current;
     }
 
     private @Nullable VideoInfo getVideoInfo(Call<VideoInfo> wrapper, boolean auth) {
@@ -449,6 +505,15 @@ public class VideoInfoService extends VideoInfoServiceBase {
         videoInfo.setAuth(auth);
 
         return videoInfo;
+    }
+
+    private @Nullable String getVisionOsVisitorData(AppClient client) {
+        Call<VisitorDataResponse> wrapper = mVideoInfoApi.getVisionOsVisitorData(
+                VideoInfoApiHelper.getVisitorDataQuery(client), client.getUserAgent(),
+                client.getInnerTubeName(), client.getClientVersion());
+        VisitorDataResponse response = RetrofitHelper.get(wrapper, false);
+        String visitorData = response != null ? response.getVisitorData() : null;
+        return visitorData != null && !visitorData.trim().isEmpty() ? visitorData : null;
     }
 
     private @Nullable VideoInfo getVideoInfoReel(Call<VideoInfoReel> wrapper, boolean auth) {

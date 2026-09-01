@@ -58,16 +58,28 @@ public abstract class VideoInfoServiceBase {
         List<? extends VideoFormat> adaptiveFormats = videoInfo.getAdaptiveFormats();
         List<? extends VideoFormat> regularFormats = videoInfo.getRegularFormats();
 
-        List<VideoUrlHolder> urlHolders = new ArrayList<>();
+        List<VideoUrlHolder> directUrlHolders = new ArrayList<>();
         if (adaptiveFormats != null)
             for (VideoFormat videoFormat : adaptiveFormats) {
-                urlHolders.add(videoFormat.getUrlHolder());
+                directUrlHolders.add(videoFormat.getUrlHolder());
             }
         if (regularFormats != null)
             for (VideoFormat videoFormat : regularFormats) {
-                urlHolders.add(videoFormat.getUrlHolder());
+                directUrlHolders.add(videoFormat.getUrlHolder());
             }
+        List<VideoUrlHolder> urlHolders = new ArrayList<>(directUrlHolders);
         urlHolders.add(videoInfo.getUrlHolder());
+
+        String originalHlsManifestUrl = videoInfo.getHlsManifestUrl();
+        String originalDashManifestUrl = videoInfo.getDashManifestUrl();
+        String hlsManifestUrl = originalHlsManifestUrl;
+        String dashManifestUrl = originalDashManifestUrl;
+        List<String> nChallenges = extractNParams(urlHolders);
+        nChallenges.add(ManifestUrlTransformer.extractNChallenge(hlsManifestUrl));
+        nChallenges.add(ManifestUrlTransformer.extractNChallenge(dashManifestUrl));
+        List<String> signatureChallenges = extractSParams(urlHolders);
+        signatureChallenges.add(null);
+        signatureChallenges.add(null);
 
         PlaybackRequestContext requestContext = videoInfo.getPlaybackRequestContext();
         String videoId = requestContext != null ? requestContext.getVideoId() :
@@ -79,16 +91,20 @@ public abstract class VideoInfoServiceBase {
                 YtCfgService.INSTANCE.getPlayerUrl(videoInfo.getClient(), videoId);
         Pair<List<String>, List<String>> result = mAppService.bulkSigExtract(
                 playerUrl,
-                extractNParams(urlHolders),
-                extractSParams(urlHolders)
+                nChallenges,
+                signatureChallenges
         );
 
         if (result != null) {
             List<String> nParams = result.getFirst();
             List<String> signatures = result.getSecond();
 
-            applyNParams(urlHolders, nParams);
-            applySignatures(urlHolders, signatures);
+            applyNParams(urlHolders, directResults(nParams, urlHolders.size()));
+            applySignatures(urlHolders, directResults(signatures, urlHolders.size()));
+            hlsManifestUrl = applyManifestNResult(hlsManifestUrl, nChallenges, nParams,
+                    urlHolders.size());
+            dashManifestUrl = applyManifestNResult(dashManifestUrl, nChallenges, nParams,
+                    urlHolders.size() + 1);
         }
 
         String playbackNonce = requestContext != null ? requestContext.getClientPlaybackNonce() :
@@ -102,9 +118,16 @@ public abstract class VideoInfoServiceBase {
         videoInfo.setPoToken(streamingPoToken);
         videoInfo.setPlayerRequestPoToken(requestContext != null ? requestContext.getPlayerRequestPoToken() :
                 poTokens != null ? poTokens.playerRequestPoToken : null);
-        applyStreamingPoToken(urlHolders, streamingPoToken);
-        videoInfo.setDashManifestUrl(applyPoToken(videoInfo.getDashManifestUrl(), streamingPoToken));
-        videoInfo.setHlsManifestUrl(applyPoToken(videoInfo.getHlsManifestUrl(), streamingPoToken));
+        // Direct GVS URLs carry proof in the query. SABR carries it in StreamerContext protobuf.
+        applyStreamingPoToken(directUrlHolders, streamingPoToken);
+        videoInfo.setDashManifestUrl(ManifestUrlTransformer.applyProofToken(
+                dashManifestUrl, streamingPoToken));
+        videoInfo.setHlsManifestUrl(ManifestUrlTransformer.applyProofToken(
+                hlsManifestUrl, streamingPoToken));
+        logManifestPreparation(videoInfo, "HLS", originalHlsManifestUrl,
+                videoInfo.getHlsManifestUrl(), streamingPoToken);
+        logManifestPreparation(videoInfo, "DASH", originalDashManifestUrl,
+                videoInfo.getDashManifestUrl(), streamingPoToken);
     }
 
     private static List<String> extractSParams(List<VideoUrlHolder> urlHolders) {
@@ -180,14 +203,44 @@ public abstract class VideoInfoServiceBase {
         return responseNonce != null ? responseNonce : fallbackNonce;
     }
 
-    private static String applyPoToken(String url, String poToken) {
-        if (url == null || poToken == null) {
+    private static List<String> directResults(List<String> results, int directCount) {
+        if (results == null || results.size() <= directCount) {
+            return results;
+        }
+        return results.subList(0, directCount);
+    }
+
+    private static String applyManifestNResult(String url, List<String> challenges,
+                                               List<String> solvedChallenges, int index) {
+        if (url == null || solvedChallenges == null || index >= challenges.size()) {
             return url;
         }
+        String challenge = challenges.get(index);
+        if (challenge == null) {
+            return url;
+        }
+        String solved = solvedChallenges.size() == challenges.size() ?
+                solvedChallenges.get(index) :
+                solvedChallenges.size() == 1 ? solvedChallenges.get(0) : null;
+        return ManifestUrlTransformer.replaceNChallenge(url, solved);
+    }
 
-        VideoUrlHolder holder = new VideoUrlHolder(url, null, null);
-        holder.setPoToken(poToken);
-        return holder.getUrl();
+    private static void logManifestPreparation(VideoInfo videoInfo, String kind,
+                                               String originalUrl, String finalUrl,
+                                               String proofToken) {
+        if (finalUrl == null) {
+            return;
+        }
+        Log.d(TAG,
+                "Manifest prepared: kind=%s client=%s nPresent=%s nSolved=%s proofPresent=%s proofInPath=%s",
+                kind,
+                videoInfo.getClient() != null ? videoInfo.getClient().getClientName() : "unknown",
+                ManifestUrlTransformer.extractNChallenge(originalUrl) != null,
+                ManifestUrlTransformer.extractNChallenge(originalUrl) != null &&
+                        !Helpers.equals(ManifestUrlTransformer.extractNChallenge(originalUrl),
+                                ManifestUrlTransformer.extractNChallenge(finalUrl)),
+                proofToken != null,
+                proofToken != null && finalUrl.contains("/pot/"));
     }
 
     private DashInfoUrl getDashInfoUrl(String url) {

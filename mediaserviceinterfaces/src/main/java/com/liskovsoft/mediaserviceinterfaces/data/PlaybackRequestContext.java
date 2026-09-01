@@ -174,6 +174,8 @@ public final class PlaybackRequestContext {
                 ", streamingTokenPresent=" + (mStreamingDataPoToken != null) +
                 ", streamingBinding=" + mStreamingTokenBindingType +
                 ", streamingProofRequired=" + mStreamingProofRequired +
+                ", expiryPresent=" + (mExpiresAtEpochMs > 0) +
+                ", expired=" + isExpired(System.currentTimeMillis()) +
                 '}';
     }
 
