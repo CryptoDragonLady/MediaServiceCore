@@ -1,10 +1,14 @@
 package com.liskovsoft.youtubeapi.common.helpers
 
 internal object AppConstants {
+    const val TV_TCL_PLAYER_URL =
+        "https://www.youtube.com/s/player/e937390a/tv-player-es6-tcl.vflset/tv-player-es6-tcl.js"
+
     @JvmField
     val playerUrls = listOf(
-        // NOTE: TV player should be in the top (ias ones may not validate correctly)
-        //"https://www.youtube.com/s/player/e937390a/tv-player-es6-tcl.vflset/tv-player-es6-tcl.js", // not compatible with WEB, TV's unique decipher routines
+        // NOTE: Generic TV player should be in the top (ias ones may not validate correctly).
+        // TV_TCL_PLAYER_URL is selected only for TV because its decipher routines are not
+        // compatible with WEB-family responses.
         "https://www.youtube.com/s/player/e937390a/tv-player-es6.vflset/tv-player-es6.js",
         "https://www.youtube.com/s/player/06ab6907/tv-player-es6.vflset/tv-player-es6.js", // the recent one with common nParam among all the clients
         "https://www.youtube.com/s/player/854a788e/player_es6.vflset/en_US/base.js",

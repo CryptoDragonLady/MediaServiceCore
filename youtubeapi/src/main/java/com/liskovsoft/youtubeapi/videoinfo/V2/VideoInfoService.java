@@ -41,23 +41,25 @@ public class VideoInfoService extends VideoInfoServiceBase {
             AppClient.TV,
             AppClient.TV_DOWNGRADED
     };
+    private static final boolean TV_CLIENT_PLAYBACK_ENABLED = false;
     private static final AppClient WEB_CLIENT = AppClient.WEB_EMBED;
     private static final long AUTHORIZATION_INIT_WAIT_MS = 5_000;
     private static final AtomicLong NEXT_PLAYER_GENERATION = new AtomicLong();
     private static VideoInfoService sInstance;
     private final VideoInfoApi mVideoInfoApi;
-    // TODO: tv clients are fully broken because of '-tcl' player
     private final static AppClient[] VIDEO_INFO_TYPE_LIST = {
-            AppClient.WEB_EMBED, // Restricted (18+) videos
+            // Preferred playback clients verified by device testing. TV remains registered
+            // separately for a future gated re-enable, but the playback gate is off for 32.41.
+            AppClient.WEB,
             AppClient.VISIONOS, // no url formats
+            AppClient.MWEB, // single audio language
+            AppClient.WEB_EMBED, // Restricted (18+) videos
             //AppClient.TV_DOWNGRADED, // probably unplayable (weird potoken format?)
             //AppClient.TV, // Supports auth. Fixes "please sign in" bug! (the best for Premium users)
             //AppClient.ANDROID_REEL, // doesn't require pot and cipher (hangs on all engines)
-            AppClient.WEB, // Fix video clip blocked in current location
             AppClient.WEB_SAFARI,
             AppClient.IOS,
             AppClient.GEO, // Fix video clip blocked in current location
-            AppClient.MWEB, // single audio language
             //AppClient.TV_LEGACY,
             //AppClient.TV_EMBED, // single audio language
             AppClient.ANDROID_VR, // doesn't require pot and cipher (often hangs?)
@@ -71,6 +73,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
     private boolean mUseAuth;
     private List<TranslationLanguage> mCachedTranslationLanguages;
     private boolean mIsUnplayable;
+    private boolean mSkipAuthenticatedFallbackOnNextSearch;
 
     private VideoInfoService() {
         mVideoInfoApi = RetrofitHelper.create(VideoInfoApi.class);
@@ -149,6 +152,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
             return forced;
         }
         final AppClient beginType = mNextInfoType != null ? mNextInfoType : VIDEO_INFO_TYPE_LIST[0];
+        final boolean skipAuthenticatedFallback = mSkipAuthenticatedFallbackOnNextSearch;
+        mSkipAuthenticatedFallbackOnNextSearch = false;
         AppClient nextType = beginType;
         VideoInfo informativeFailure = null;
         VideoInfo bestLiveCandidate = null;
@@ -161,7 +166,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
             if (result != null) {
                 PlayerResponseAssessment assessment = PlayerResponseAssessment.assess(result);
                 Log.d(TAG, "Player candidate: client=%s, %s", nextType.name(), assessment);
-                if (!authenticatedFallbackAttempted && shouldTryAuthenticatedFallback(
+                if (!authenticatedFallbackAttempted && !skipAuthenticatedFallback &&
+                        shouldTryAuthenticatedFallback(
                         assessment.getOutcome())) {
                     authenticatedFallbackAttempted = true;
                     VideoInfo authenticated = firstAuthenticatedPlayable(
@@ -248,7 +254,36 @@ public class VideoInfoService extends VideoInfoServiceBase {
 
     static boolean shouldTryAuthenticatedFallback(
             PlayerResponseAssessment.Outcome outcome, boolean signedIn) {
-        return signedIn && outcome == PlayerResponseAssessment.Outcome.LOGIN_REQUIRED;
+        return signedIn && hasEnabledAuthenticatedFallback() &&
+                outcome == PlayerResponseAssessment.Outcome.LOGIN_REQUIRED;
+    }
+
+    static boolean shouldTryAuthenticatedFallback(
+            PlayerResponseAssessment.Outcome outcome, boolean signedIn,
+            boolean skipAuthenticatedFallback) {
+        return !skipAuthenticatedFallback && shouldTryAuthenticatedFallback(outcome, signedIn);
+    }
+
+    static boolean shouldSkipAuthenticatedFallbackAfter(AppClient failedClient) {
+        return failedClient != null && failedClient.isTVClient();
+    }
+
+    static AppClient[] playbackClientOrder() {
+        return VIDEO_INFO_TYPE_LIST.clone();
+    }
+
+    static boolean isPlaybackClientEnabled(AppClient client) {
+        return client != null && (TV_CLIENT_PLAYBACK_ENABLED || !client.isTVClient());
+    }
+
+    private static boolean hasEnabledAuthenticatedFallback() {
+        for (AppClient client : AUTHENTICATED_FALLBACK_CLIENTS) {
+            if (isPlaybackClientEnabled(client)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static boolean shouldTryAuthenticatedFallback(
@@ -318,6 +353,8 @@ public class VideoInfoService extends VideoInfoServiceBase {
     }
 
     private void nextVideoInfoType() {
+        mSkipAuthenticatedFallbackOnNextSearch =
+                shouldSkipAuthenticatedFallbackAfter(mActualInfoType);
         mNextInfoType = Helpers.getNextValue(VIDEO_INFO_TYPE_LIST, mActualInfoType);
     }
 
@@ -333,6 +370,11 @@ public class VideoInfoService extends VideoInfoServiceBase {
     }
 
     private VideoInfo getVideoInfo(AppClient client, String videoId, String clickTrackingParams) {
+        if (!isPlaybackClientEnabled(client)) {
+            Log.w(TAG, "Playback client disabled: %s", client != null ? client.name() : "null");
+            return null;
+        }
+
         VideoInfo result;
         String clientPlaybackNonce = null;
         String visitorData = mAppService.getVisitorData();
@@ -598,6 +640,7 @@ public class VideoInfoService extends VideoInfoServiceBase {
 
     private void resetInfoTypeToDefault() {
         mNextInfoType = null;
+        mSkipAuthenticatedFallbackOnNextSearch = false;
         mActualInfoType = VIDEO_INFO_TYPE_LIST[0];
         persistVideoInfoType();
     }

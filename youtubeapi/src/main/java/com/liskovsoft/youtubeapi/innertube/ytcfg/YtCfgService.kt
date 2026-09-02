@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper
 import com.liskovsoft.youtubeapi.common.helpers.AppClient
+import com.liskovsoft.youtubeapi.common.helpers.AppConstants
 import com.liskovsoft.youtubeapi.innertube.utils.URLS
 import com.liskovsoft.youtubeapi.innertube.utils.traverseObj
 
@@ -35,7 +36,9 @@ internal object YtCfgService {
 
     @Synchronized
     fun getPlayerUrl(client: AppClient, videoId: String?): String? {
-        return getPlayerConfig(selectPlayerConfigClient(client, videoId), videoId)?.playerUrl
+        val discoveredPlayer =
+            getPlayerConfig(selectPlayerConfigClient(client, videoId), videoId)?.playerUrl
+        return selectPlayerScriptIdentity(client, discoveredPlayer)
     }
 
     /**
@@ -45,6 +48,21 @@ internal object YtCfgService {
      */
     internal fun selectPlayerConfigClient(client: AppClient, videoId: String?): AppClient =
         if (client.getRefererUrl(videoId) != null) client else AppClient.WEB
+
+    /**
+     * Authenticated TV responses use a distinct N/SIG implementation even when the TV page
+     * advertises the generic player. Keep that solver identity scoped to the two authenticated
+     * TV fallbacks so browser and native clients retain the player discovered for their context.
+     */
+    internal fun selectPlayerScriptIdentity(
+        client: AppClient,
+        discoveredPlayer: String?
+    ): String? =
+        if (client == AppClient.TV || client == AppClient.TV_DOWNGRADED) {
+            AppConstants.TV_TCL_PLAYER_URL
+        } else {
+            discoveredPlayer
+        }
 
     @Synchronized
     fun isGvsPoTokenContentBound(client: AppClient, videoId: String?): Boolean {

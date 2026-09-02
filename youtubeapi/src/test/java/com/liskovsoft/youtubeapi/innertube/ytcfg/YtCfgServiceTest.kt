@@ -73,4 +73,44 @@ class YtCfgServiceTest {
         assertEquals(AppClient.WEB_EMBED, YtCfgService.selectPlayerConfigClient(AppClient.WEB_EMBED, "video-id"))
         assertEquals(AppClient.WEB, YtCfgService.selectPlayerConfigClient(AppClient.WEB, "video-id"))
     }
+
+    @Test
+    fun authenticatedTvClientsUseTheirTclPlayerForChallenges() {
+        val genericTvPlayer =
+            "https://www.youtube.com/s/player/e937390a/tv-player-es6.vflset/tv-player-es6.js"
+        val tclTvPlayer =
+            "https://www.youtube.com/s/player/e937390a/tv-player-es6-tcl.vflset/tv-player-es6-tcl.js"
+
+        assertEquals(
+            tclTvPlayer,
+            YtCfgService.selectPlayerScriptIdentity(AppClient.TV, genericTvPlayer)
+        )
+        assertEquals(
+            tclTvPlayer,
+            YtCfgService.selectPlayerScriptIdentity(AppClient.TV_DOWNGRADED, genericTvPlayer)
+        )
+    }
+
+    @Test
+    fun browserAndNativeClientsKeepTheirDiscoveredPlayerForChallenges() {
+        val webPlayer =
+            "https://www.youtube.com/s/player/web/player_ias.vflset/en_US/base.js"
+
+        assertEquals(
+            webPlayer,
+            YtCfgService.selectPlayerScriptIdentity(AppClient.WEB, webPlayer)
+        )
+        assertEquals(
+            webPlayer,
+            YtCfgService.selectPlayerScriptIdentity(AppClient.WEB_EMBED, webPlayer)
+        )
+        assertEquals(
+            webPlayer,
+            YtCfgService.selectPlayerScriptIdentity(AppClient.MWEB, webPlayer)
+        )
+        assertEquals(
+            webPlayer,
+            YtCfgService.selectPlayerScriptIdentity(AppClient.VISIONOS, webPlayer)
+        )
+    }
 }
